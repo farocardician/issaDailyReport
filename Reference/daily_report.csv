@@ -1,0 +1,2 @@
+Report_ID,Report_Date,Store_ID,SPG_ID,Traffic,GMV,Online_GMV,Order,Pieces,No_Buy_Reason,Stock_Issue,Submitted_Latitude,Submitted_Longitude,Distance_From_Store_Meter,Note,Created_At
+RPT-20260613-222600-1498,6/13/2026 22:26:00,ST-VZ-SOGO-PIM-JKT,USR-0001,10,500000,0,2,3,Test alasan tidak beli,Test kendala stok,-6.272245364,106.8422682,0,Test note,6/13/2026 22:26:00

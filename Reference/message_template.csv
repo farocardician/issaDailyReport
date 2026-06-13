@@ -1,0 +1,23 @@
+PRIVATE_CHAT_ONLY,Laporan hanya bisa dikirim melalui chat pribadi dengan bot ya.
+START,Halo 👋\n\nSaya akan bantu input laporan toko harian.\n\nTekan tombol <b>Share Location</b> di bawah ini supaya saya bisa cari toko terdekat.
+ASK_LOCATION,Silakan tekan tombol <b>Share Location</b> supaya saya bisa bantu cari toko terdekat.
+LOCATION_NOT_FOUND,Saya belum bisa memastikan toko dari lokasi ini.\n\nSilakan pilih toko secara manual.
+STORE_CONFIRMATION,Saya menemukan toko terdekat:\n\n<b>{{store_label}}</b>\n\nJarak kamu sekitar <b>{{distance_meter}}</b> dari toko.\n\nApakah benar ini toko yang mau dilaporkan?
+MULTIPLE_STORES_FOUND,Kamu sepertinya berada di area:\n\n<b>{{area_label}}</b>\n\nPilih toko yang mau dilaporkan:
+MANUAL_STORE_SELECTION,Silakan pilih toko yang mau dilaporkan:
+ASK_PIN,Masukkan PIN kamu untuk lanjut.
+PIN_INVALID,PIN belum cocok. Silakan coba lagi.
+REPORT_ALREADY_EXISTS,Laporan untuk toko dan tanggal ini sudah ada.\n\nMau submit lagi sebagai koreksi?
+ASK_TRAFFIC,Berapa jumlah traffic / pengunjung hari ini?
+ASK_GMV,Berapa GMV / total penjualan offline hari ini?
+ASK_ONLINE_GMV,"Berapa GMV online hari ini?\n\nKalau tidak ada, isi 0."
+ASK_ORDER,Berapa jumlah order / transaksi hari ini?
+ASK_PIECES,Berapa jumlah pieces / item terjual hari ini?
+ASK_NO_BUY_REASON,"Alasan customer tidak jadi beli apa?\n\nContoh: harga, ukuran tidak ada, model kurang cocok.\nKalau tidak ada, isi -"
+ASK_STOCK_ISSUE,"Ada kendala stok?\n\nContoh: size habis, warna habis, barang belum datang.\nKalau tidak ada, isi -"
+ASK_NOTE,"Catatan tambahan?\n\nKalau tidak ada, isi -"
+REPORT_SUMMARY,Berikut ringkasan laporan:\n\n<b>{{store_label}}</b>\n\nTraffic: {{traffic}}\nGMV Offline: {{gmv}}\nGMV Online: {{online_gmv}}\nOrder: {{order}}\nPieces: {{pieces}}\n\nAlasan tidak beli:\n{{no_buy_reason}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nSubmit laporan ini?
+SUBMIT_SUCCESS,Laporan berhasil dikirim. Terima kasih 🙏
+CANCELLED,"Baik, proses dibatalkan."
+UNKNOWN_COMMAND,Saya belum mengerti pesan ini.\n\nKetik /start untuk mulai laporan.
+SYSTEM_ERROR,"Maaf, sedang ada kendala sistem.\n\nSilakan coba lagi atau hubungi admin."

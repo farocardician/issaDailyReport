@@ -1,0 +1,8 @@
+FROM ghcr.io/yamadashy/repomix AS pack
+
+WORKDIR /app
+COPY . .
+RUN ["repomix"]
+
+FROM scratch AS export
+COPY --from=pack /app/repomix-output.xml /repomix-output.xml

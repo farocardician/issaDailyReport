@@ -1,0 +1,77 @@
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "input": {
+    "maxFileSize": 1000000
+  },
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "parsableStyle": false,
+    "compress": false,
+    "headerText": "SPG Daily Store Reporting Telegram Bot. Use this packed repository to debug bugs or develop features while preserving the documented architecture, Telegram flow, and Docker-first workflow.",
+    "instructionFilePath": "repomix-instructions.md",
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "showLineNumbers": true,
+    "truncateBase64": true,
+    "copyToClipboard": false,
+    "includeEmptyDirectories": false,
+    "includeFullDirectoryStructure": true,
+    "topFilesLength": 20,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100,
+      "includeDiffs": false,
+      "includeLogs": false,
+      "includeLogsCount": 25
+    }
+  },
+  "include": [
+    "PLAN.md",
+    "README.md",
+    "requirements.txt",
+    "Dockerfile",
+    "Dockerfile.repomix",
+    "docker-compose.yml",
+    "Makefile",
+    ".env.example",
+    ".gitignore",
+    ".dockerignore",
+    "repomix.config.json",
+    "repomix-instructions.md",
+    "sql/**/*",
+    "src/**/*",
+    "tests/**/*",
+    "Reference/message_template.csv",
+    "Reference/store_master.csv",
+    "Reference/daily_report.csv"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDotIgnore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "repomix-output.*",
+      "repomix-output-*.xml",
+      "pgdata/**",
+      "**/__pycache__/**",
+      "**/.pytest_cache/**",
+      "**/.DS_Store",
+      "*.log",
+      ".env",
+      ".env.local",
+      ".env.production",
+      ".env.staging",
+      "Reference/user_master.csv"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
