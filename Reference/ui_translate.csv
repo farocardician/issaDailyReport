@@ -69,7 +69,7 @@ NEXT_PHASE_NOTE_LABEL,Catatan
 STOCK_ISSUE_SELECTED_EMPTY,Belum ada yang dipilih.
 STOCK_ISSUE_SELECTED_HEADER,Dipilih:
 STOCK_ISSUE_DETAIL_PROMPT,"{{progress}}\n{{detail_progress}}\n\nUntuk kendala <b>{{issue}}</b>, SKU apa saja yang terdampak?\n\n{{sku_list}}\n\n{{instructions}}"
-STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION,"Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma."
+STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION,"Ketik SKU yang terdampak. Kalau ada beberapa SKU, pisahkan dengan koma."
 STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION,Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU.
 STOCK_ISSUE_SKU_EMPTY,Belum ada SKU yang diinput.
 STOCK_ISSUE_SKU_HEADER,SKU yang sudah diinput:

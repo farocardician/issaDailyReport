@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
-from telegram.constants import ChatType
+from telegram.constants import ChatType, ParseMode
 
 from app.bot.flow import ReportFlow
 from app.domain.session_state import Step
@@ -102,6 +102,13 @@ def test_stock_issue_continue_starts_first_selected_detail_in_db_order() -> None
     assert draft["stock_issue_detail_option_id"] == "color_empty"
     assert "STOCK_ISSUE_DETAIL_PROMPT Warna Habis" in chat.sent_messages[-1]["text"]
     assert "Kendala 1/2 · Warna Habis" in chat.sent_messages[-1]["text"]
+    assert "<b>SKU</b>" in chat.sent_messages[-1]["text"]
+    assert "&lt;b&gt;" not in chat.sent_messages[-1]["text"]
+    assert chat.sent_messages[-1]["parse_mode"] == ParseMode.HTML
+    assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [
+        [{"text": "Sebelumnya"}, {"text": "Batal"}]
+    ]
+    assert "inline_keyboard" not in chat.sent_messages[-1]["reply_markup"].to_dict()
 
 
 def test_stock_issue_multiple_details_save_multiline_value_then_note_step() -> None:
@@ -121,16 +128,18 @@ def test_stock_issue_multiple_details_save_multiline_value_then_note_step() -> N
     )
 
     asyncio.run(flow.handle_message(_text_update(chat, "SKU-001, SKU-002"), SimpleNamespace()))
-    asyncio.run(flow.handle_callback(_callback_update(chat, "stock_issue:detail_continue"), SimpleNamespace()))
 
     assert sessions.session["draft_report"]["stock_issue_detail_option_id"] == "color_empty"
     assert "STOCK_ISSUE_DETAIL_PROMPT Warna Habis" in chat.sent_messages[-1]["text"]
     assert "Kendala 2/2 · Warna Habis" in chat.sent_messages[-1]["text"]
+    assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [
+        [{"text": "Sebelumnya"}, {"text": "Batal"}]
+    ]
 
-    asyncio.run(flow.handle_callback(_callback_update(chat, "stock_issue:detail_skip"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "SKU-003"), SimpleNamespace()))
 
     assert sessions.session["current_step"] == Step.ASK_NOTE.value
-    assert sessions.session["draft_report"]["stock_issue"] == "Size Habis: SKU-001, SKU-002\nWarna Habis: -"
+    assert sessions.session["draft_report"]["stock_issue"] == "Size Habis: SKU-001, SKU-002\nWarna Habis: SKU-003"
     assert "ASK_NOTE" in chat.sent_messages[-1]["text"]
 
 
@@ -150,13 +159,13 @@ def test_stock_issue_previous_moves_between_details_and_back_to_picker() -> None
         draft=draft,
     )
 
-    asyncio.run(flow.handle_callback(_callback_update(chat, "stock_issue:detail_previous"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Sebelumnya"), SimpleNamespace()))
 
     assert sessions.session["draft_report"]["stock_issue_detail_option_id"] == "size_empty"
     assert "STOCK_ISSUE_DETAIL_PROMPT Size Habis" in chat.sent_messages[-1]["text"]
     assert "✓ SKU-001" in chat.sent_messages[-1]["text"]
 
-    asyncio.run(flow.handle_callback(_callback_update(chat, "stock_issue:detail_previous"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Sebelumnya"), SimpleNamespace()))
 
     picker_draft = sessions.session["draft_report"]
     assert picker_draft["stock_issue_ids"] == ["size_empty", "color_empty"]
@@ -197,10 +206,25 @@ def test_stock_issue_selection_edit_preserves_remaining_skus_and_collects_new_is
     assert "Kendala 2/2 · Stok Kosong" in chat.sent_messages[-1]["text"]
 
     asyncio.run(flow.handle_message(_text_update(chat, "SKU-003"), SimpleNamespace()))
-    asyncio.run(flow.handle_callback(_callback_update(chat, "stock_issue:detail_continue"), SimpleNamespace()))
 
     assert sessions.session["current_step"] == Step.ASK_NOTE.value
     assert sessions.session["draft_report"]["stock_issue"] == "Size Habis: SKU-001\nStok Kosong: SKU-003"
+
+
+def test_stock_issue_detail_cancel_cancels_session() -> None:
+    draft = {
+        "stock_issue_ids": ["size_empty"],
+        "stock_issue_labels": {"size_empty": "Size Habis"},
+        "stock_issue_detail_option_ids": ["size_empty"],
+        "stock_issue_detail_option_id": "size_empty",
+        "stock_issue_sku_details": {},
+    }
+    flow, chat, sessions = _flow([_stock_issue("size_empty", "Size Habis", 1)], draft=draft)
+
+    asyncio.run(flow.handle_message(_text_update(chat, "Batal"), SimpleNamespace()))
+
+    assert sessions.session == {}
+    assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [[{"text": "Mulai"}]]
 
 
 def test_stock_issue_none_goes_to_note_with_dash() -> None:
@@ -254,6 +278,7 @@ def _flow(
 def _templates() -> dict[str, str]:
     return {
         "UNKNOWN_COMMAND": "UNKNOWN_COMMAND",
+        "CANCELLED": "CANCELLED",
         "ASK_STOCK_ISSUE": "{{progress}}\nASK_STOCK_ISSUE\n{{selected_issues}}",
         "ASK_NOTE": "{{progress}}\nASK_NOTE",
         "STOCK_ISSUE_DETAIL_PROMPT": "{{progress}}\n{{detail_progress}}\nSTOCK_ISSUE_DETAIL_PROMPT {{issue}}\n{{sku_list}}\n{{instructions}}",
@@ -262,13 +287,14 @@ def _templates() -> dict[str, str]:
         "STOCK_ISSUE_SELECTED_HEADER": "Dipilih:",
         "STOCK_ISSUE_SKU_EMPTY": "Belum ada SKU yang diinput.",
         "STOCK_ISSUE_SKU_HEADER": "SKU yang sudah diinput:",
-        "STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION": "Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma.",
+        "STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION": "Ketik <b>SKU</b> yang terdampak. Kalau ada beberapa SKU, pisahkan dengan koma.",
         "STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION": "Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU.",
         "STOCK_ISSUE_DETAIL_EMPTY_VALUE": "-",
         "STOCK_ISSUE_DETAIL_LINE": "{{issue}}: {{sku_list}}",
         "SELECTED_PREFIX": "✓",
         "BUTTON_NONE": "Tidak Ada",
         "BUTTON_START": "Mulai",
+        "BUTTON_CANCEL": "Batal",
         "BUTTON_PREVIOUS": "Sebelumnya",
         "BUTTON_SKIP_SKU": "Lewati SKU",
         "BUTTON_STOCK_ISSUE_NEXT": "Lanjut input {{issue}}",

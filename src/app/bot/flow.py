@@ -19,7 +19,6 @@ from app.bot.keyboards import (
     sales_source_keyboard,
     sales_summary_keyboard,
     start_again_keyboard,
-    stock_issue_detail_keyboard,
     stock_issue_keyboard,
     start_location_keyboard,
     store_list_keyboard,
@@ -34,11 +33,9 @@ from app.bot.sales_text import (
     source_input_position,
 )
 from app.bot.stock_issue_text import (
-    continue_button_label,
     current_detail_position,
     current_sku_values,
     detail_instruction_text,
-    has_current_sku_values,
     merge_sku_values,
     next_detail_option_id,
     parse_sku_values,
@@ -495,6 +492,13 @@ class ReportFlow:
 
         draft = dict(session["draft_report"])
         if draft.get("stock_issue_detail_option_id"):
+            text = text.strip()
+            if await self._is_previous_answer(text):
+                await self._handle_stock_issue_detail_previous(update, session, draft)
+                return
+            if await self._is_cancel_answer(text):
+                await self._cancel(update)
+                return
             if await self._is_none_answer(text):
                 await self._advance_stock_issue_detail(update, session, draft)
                 return
@@ -709,14 +713,7 @@ class ReportFlow:
         details = dict(draft.get("stock_issue_sku_details", {}))
         details[current_option_id] = merge_sku_values(list(details.get(current_option_id, [])), sku_values)
         draft["stock_issue_sku_details"] = details
-        await self._persist(
-            update,
-            Step.ASK_STOCK_ISSUE,
-            draft,
-            selected_store_id=session["selected_store_id"],
-            user_id=session["user_id"],
-        )
-        await self._send_stock_issue_detail_prompt(update, draft)
+        await self._advance_stock_issue_detail(update, session, draft)
 
     async def _advance_stock_issue_detail(
         self,
@@ -1253,14 +1250,15 @@ class ReportFlow:
                 raise
 
     async def _send_stock_issue_detail_prompt(self, update: Update, draft: dict[str, Any]) -> None:
-        await self._send(
+        await self._send_trusted(
             update,
             "STOCK_ISSUE_DETAIL_PROMPT",
+            {"instructions"},
             issue=await self._stock_issue_option_label(draft, draft["stock_issue_detail_option_id"]),
             detail_progress=await self._stock_issue_detail_progress(draft),
             sku_list=await self._stock_issue_sku_text(draft),
             instructions=await self._stock_issue_detail_instruction_text(draft),
-            reply_markup=await self._stock_issue_detail_keyboard(draft),
+            reply_markup=await self._sales_input_navigation_keyboard(),
             progress_step=Step.ASK_STOCK_ISSUE,
         )
 
@@ -1407,16 +1405,6 @@ class ReportFlow:
             await self._stock_issue_next_label(draft),
         )
 
-    async def _stock_issue_detail_keyboard(self, draft: dict[str, Any]):
-        await self._refresh_templates()
-        return stock_issue_detail_keyboard(
-            await self._stock_issue_detail_continue_label(draft),
-            self._templates.render("BUTTON_SKIP_SKU")
-            if not has_current_sku_values(draft, draft["stock_issue_detail_option_id"])
-            else None,
-            self._templates.render("BUTTON_PREVIOUS"),
-        )
-
     async def _stock_issue_selected_text(self, draft: dict[str, Any]) -> str:
         selected_ids = list(draft.get("stock_issue_ids", []))
         active_issues = {issue.stock_issue_id: issue for issue in await self._active_stock_issues()}
@@ -1491,24 +1479,9 @@ class ReportFlow:
             await self._stock_issue_detail_title(draft, current_option_id),
         )
 
-    async def _stock_issue_detail_continue_label(self, draft: dict[str, Any]) -> str:
-        detail_option_ids = list(draft.get("stock_issue_detail_option_ids", []))
-        current_option_id = draft["stock_issue_detail_option_id"]
-        next_option_id = next_detail_option_id(detail_option_ids, current_option_id)
-        await self._refresh_templates()
-        return continue_button_label(
-            self._templates,
-            await self._stock_issue_detail_title(draft, next_option_id) if next_option_id is not None else None,
-            self._templates.render("NEXT_PHASE_NOTE_LABEL"),
-        )
-
     async def _stock_issue_detail_instruction_text(self, draft: dict[str, Any]) -> str:
-        current_option_id = draft["stock_issue_detail_option_id"]
         await self._refresh_templates()
-        return detail_instruction_text(
-            self._templates,
-            not has_current_sku_values(draft, current_option_id),
-        )
+        return detail_instruction_text(self._templates, False)
 
     async def _active_stock_issues(self) -> list[StockIssue]:
         return await self._stock_issues.list_active(self._settings.active_status)
