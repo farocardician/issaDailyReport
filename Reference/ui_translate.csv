@@ -33,6 +33,9 @@ BUTTON_NONE,Tidak Ada
 BUTTON_DONE,Selesai
 BUTTON_SKIP,Lewati
 BUTTON_STOCK_ISSUE_OTHER,Lainnya
+BUTTON_CONTINUE_TO_NEXT_ISSUE,Lanjut ke {{next_issue_label}}
+BUTTON_CONTINUE_TO_NEXT_PHASE,Lanjut ke {{next_phase_label}}
+BUTTON_SKIP_SKU,Lewati SKU
 SELECTED_PREFIX,✓
 PROGRESS_MAIN_LABEL,Langkah
 PROGRESS_MAIN_FORMAT,{{label}} {{current}}/{{total}} · {{phase}}
@@ -62,10 +65,13 @@ STOCK_ISSUE_DETAIL_TITLE_SIZE_EMPTY,Size Habis
 STOCK_ISSUE_DETAIL_TITLE_COLOR_EMPTY,Warna Habis
 STOCK_ISSUE_DETAIL_TITLE_NOT_ARRIVED,Barang Belum Datang
 STOCK_ISSUE_DETAIL_TITLE_STOCK_EMPTY,Stok Kosong
+NEXT_PHASE_NOTE_LABEL,Catatan
 STOCK_ISSUE_SELECTED_EMPTY,Belum ada yang dipilih.
 STOCK_ISSUE_SELECTED_HEADER,Dipilih:
 STOCK_ISSUE_CUSTOM_PROMPT,Ketik kendala stok lainnya.
-STOCK_ISSUE_DETAIL_PROMPT,"{{progress}}\n{{detail_progress}}\n\nUntuk kendala <b>{{issue}}</b>, SKU apa saja yang terdampak?\n\n{{sku_list}}\n\nKetik SKU satu per satu, atau beberapa SKU dipisahkan koma.\nTekan <b>Selesai</b> kalau sudah.\nTekan <b>Lewati</b> kalau tidak perlu isi SKU."
+STOCK_ISSUE_DETAIL_PROMPT,"{{progress}}\n{{detail_progress}}\n\nUntuk kendala <b>{{issue}}</b>, SKU apa saja yang terdampak?\n\n{{sku_list}}\n\n{{instructions}}"
+STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION,"Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma."
+STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION,Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU.
 STOCK_ISSUE_SKU_EMPTY,Belum ada SKU yang diinput.
 STOCK_ISSUE_SKU_HEADER,SKU yang sudah diinput:
 STOCK_ISSUE_DETAIL_EMPTY_VALUE,-

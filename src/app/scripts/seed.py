@@ -147,7 +147,7 @@ def _float_or_none(value: str) -> float | None:
 def _template_category(key: str) -> str:
     if key.startswith("BUTTON_"):
         return "button"
-    if key.startswith("PROGRESS_") or key.startswith("CONTEXTUAL_STEP_"):
+    if key.startswith("PROGRESS_") or key.startswith("CONTEXTUAL_STEP_") or key.startswith("NEXT_PHASE_"):
         return "progress"
     if key.startswith("ASK_"):
         return "prompt"

@@ -122,12 +122,8 @@ def stock_issue_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
-def stock_issue_detail_keyboard(done_label: str, skip_label: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(done_label, callback_data="stock_issue:detail_done"),
-                InlineKeyboardButton(skip_label, callback_data="stock_issue:detail_skip"),
-            ]
-        ]
-    )
+def stock_issue_detail_keyboard(continue_label: str, skip_label: str | None) -> InlineKeyboardMarkup:
+    row = [InlineKeyboardButton(continue_label, callback_data="stock_issue:detail_continue")]
+    if skip_label is not None:
+        row.append(InlineKeyboardButton(skip_label, callback_data="stock_issue:detail_skip"))
+    return InlineKeyboardMarkup([row])

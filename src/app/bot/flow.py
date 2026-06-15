@@ -22,7 +22,12 @@ from app.bot.keyboards import (
 from app.bot.notifications import send_admin_notification
 from app.bot.progress import contextual_step_progress, progress_for_step
 from app.bot.stock_issue_text import (
+    continue_button_label,
     current_detail_position,
+    current_sku_values,
+    detail_instruction_text,
+    has_current_sku_values,
+    merge_sku_values,
     next_detail_option_id,
     parse_sku_values,
     selected_issue_text,
@@ -356,7 +361,7 @@ class ReportFlow:
     async def _handle_stock_issue_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
         draft = dict(session["draft_report"])
 
-        if data == "stock_issue:detail_done":
+        if data in {"stock_issue:detail_continue", "stock_issue:detail_done"}:
             await self._advance_stock_issue_detail(update, session, draft)
             return
 
@@ -476,11 +481,7 @@ class ReportFlow:
             return
 
         details = dict(draft.get("stock_issue_sku_details", {}))
-        current_values = list(details.get(current_option_id, []))
-        for sku in sku_values:
-            if sku not in current_values:
-                current_values.append(sku)
-        details[current_option_id] = current_values
+        details[current_option_id] = merge_sku_values(list(details.get(current_option_id, [])), sku_values)
         draft["stock_issue_sku_details"] = details
         await self._persist(
             update,
@@ -810,7 +811,8 @@ class ReportFlow:
             issue=await self._stock_issue_option_label(draft["stock_issue_detail_option_id"]),
             detail_progress=await self._stock_issue_detail_progress(draft),
             sku_list=await self._stock_issue_sku_text(draft),
-            reply_markup=await self._stock_issue_detail_keyboard(),
+            instructions=await self._stock_issue_detail_instruction_text(draft),
+            reply_markup=await self._stock_issue_detail_keyboard(draft),
             progress_step=Step.ASK_STOCK_ISSUE,
         )
 
@@ -895,11 +897,13 @@ class ReportFlow:
             self._templates.render("BUTTON_DONE"),
         )
 
-    async def _stock_issue_detail_keyboard(self):
+    async def _stock_issue_detail_keyboard(self, draft: dict[str, Any]):
         await self._refresh_templates()
         return stock_issue_detail_keyboard(
-            self._templates.render("BUTTON_DONE"),
-            self._templates.render("BUTTON_SKIP"),
+            await self._stock_issue_detail_continue_label(draft),
+            self._templates.render("BUTTON_SKIP_SKU")
+            if not has_current_sku_values(draft, draft["stock_issue_detail_option_id"])
+            else None,
         )
 
     async def _stock_issue_selected_text(self, draft: dict[str, Any]) -> str:
@@ -950,9 +954,8 @@ class ReportFlow:
 
     async def _stock_issue_sku_text(self, draft: dict[str, Any]) -> str:
         current_option_id = draft["stock_issue_detail_option_id"]
-        sku_values = list(dict(draft.get("stock_issue_sku_details", {})).get(current_option_id, []))
         await self._refresh_templates()
-        return sku_list_text(self._templates, sku_values)
+        return sku_list_text(self._templates, current_sku_values(draft, current_option_id))
 
     async def _stock_issue_option_label(self, option_id: str) -> str:
         await self._refresh_templates()
@@ -973,6 +976,25 @@ class ReportFlow:
             current_detail_position(detail_option_ids, current_option_id),
             len(detail_option_ids),
             await self._stock_issue_detail_title(current_option_id),
+        )
+
+    async def _stock_issue_detail_continue_label(self, draft: dict[str, Any]) -> str:
+        detail_option_ids = list(draft.get("stock_issue_detail_option_ids", []))
+        current_option_id = draft["stock_issue_detail_option_id"]
+        next_option_id = next_detail_option_id(detail_option_ids, current_option_id)
+        await self._refresh_templates()
+        return continue_button_label(
+            self._templates,
+            await self._stock_issue_detail_title(next_option_id) if next_option_id is not None else None,
+            self._templates.render("NEXT_PHASE_NOTE_LABEL"),
+        )
+
+    async def _stock_issue_detail_instruction_text(self, draft: dict[str, Any]) -> str:
+        current_option_id = draft["stock_issue_detail_option_id"]
+        await self._refresh_templates()
+        return detail_instruction_text(
+            self._templates,
+            not has_current_sku_values(draft, current_option_id),
         )
 
     def _ordered_selected_stock_issue_ids(self, draft: dict[str, Any]) -> list[str]:
@@ -1034,4 +1056,3 @@ def _message_text(update: Update) -> str | None:
     if update.message is None or update.message.text is None:
         return None
     return update.message.text
-
