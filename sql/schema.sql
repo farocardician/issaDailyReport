@@ -56,10 +56,65 @@ CREATE TABLE IF NOT EXISTS bot_sessions (
     expires_at timestamptz NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS message_templates (
+DO $$
+BEGIN
+    IF to_regclass('public.ui_translate') IS NULL
+       AND to_regclass('public.message_templates') IS NOT NULL THEN
+        ALTER TABLE message_templates RENAME TO ui_translate;
+    END IF;
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS ui_translate (
     key text PRIMARY KEY,
-    message text NOT NULL
+    category text NOT NULL DEFAULT 'general',
+    message text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+DO $$
+BEGIN
+    IF to_regclass('public.message_templates') IS NOT NULL THEN
+        INSERT INTO ui_translate (key, category, message, description, updated_at)
+        SELECT key, category, message, description, updated_at
+        FROM message_templates
+        ON CONFLICT (key) DO UPDATE
+        SET category = EXCLUDED.category,
+            message = EXCLUDED.message,
+            description = EXCLUDED.description,
+            updated_at = EXCLUDED.updated_at;
+
+        DROP TABLE message_templates;
+    END IF;
+END;
+$$;
+
+ALTER TABLE ui_translate
+    ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'general',
+    ADD COLUMN IF NOT EXISTS description text NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+DROP INDEX IF EXISTS idx_message_templates_category_key;
+CREATE INDEX IF NOT EXISTS idx_ui_translate_category_key
+    ON ui_translate(category, key);
+
+CREATE OR REPLACE FUNCTION set_ui_translate_updated_at()
+RETURNS trigger AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_message_templates_updated_at ON ui_translate;
+DROP TRIGGER IF EXISTS trg_ui_translate_updated_at ON ui_translate;
+CREATE TRIGGER trg_ui_translate_updated_at
+    BEFORE UPDATE ON ui_translate
+    FOR EACH ROW
+    EXECUTE FUNCTION set_ui_translate_updated_at();
+
+DROP FUNCTION IF EXISTS set_message_templates_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_daily_reports_store_date
     ON daily_reports(store_id, report_date);

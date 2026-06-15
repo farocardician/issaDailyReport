@@ -34,6 +34,14 @@ BUTTON_DONE,Selesai
 BUTTON_SKIP,Lewati
 BUTTON_STOCK_ISSUE_OTHER,Lainnya
 SELECTED_PREFIX,✓
+STORE_LABEL_FORMAT,"{{brand}} – {{department_store}} {{branch}}, {{city}}"
+STORE_BUTTON_LABEL_WITH_DISTANCE,{{store_label}} ({{distance_meter}})
+AREA_LABEL_FORMAT,"{{department_store}} {{branch}}, {{city}}"
+DISTANCE_METER_FORMAT,{{distance}} m
+DISTANCE_EMPTY,-
+LOCATION_STATUS_IN_RADIUS,Dalam radius
+LOCATION_STATUS_OUT_OF_RADIUS,Di luar radius
+LOCATION_STATUS_MANUAL_STORE_SELECTION,Pilih toko manual
 STOCK_ISSUE_OPTION_SIZE_EMPTY,Size habis
 STOCK_ISSUE_OPTION_COLOR_EMPTY,Warna habis
 STOCK_ISSUE_OPTION_NOT_ARRIVED,Barang belum datang

@@ -1,9 +1,8 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
 from app.domain.store_matching import StoreCandidate, StoreLocation
-from app.templates import distance_meter, store_label
 
 
 def share_location_keyboard(location_label: str, skip_label: str) -> ReplyKeyboardMarkup:
@@ -30,12 +29,13 @@ def confirm_store_keyboard(yes_label: str, other_store_label: str) -> InlineKeyb
 
 def store_list_keyboard(
     candidates: Sequence[StoreCandidate],
+    candidate_labels: Mapping[str, str],
     other_store_label: str | None = None,
 ) -> InlineKeyboardMarkup:
     rows = [
             [
                 InlineKeyboardButton(
-                    f"{store_label(candidate.store)} ({distance_meter(candidate.distance_meter)})",
+                    candidate_labels[candidate.store.store_id],
                     callback_data=f"store:{candidate.store.store_id}",
                 )
             ]
@@ -46,12 +46,12 @@ def store_list_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
-def manual_store_list_keyboard(stores: Sequence[StoreLocation]) -> InlineKeyboardMarkup:
+def manual_store_list_keyboard(stores: Sequence[StoreLocation], store_labels: Mapping[str, str]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    store_label(store),
+                    store_labels[store.store_id],
                     callback_data=f"store:{store.store_id}",
                 )
             ]

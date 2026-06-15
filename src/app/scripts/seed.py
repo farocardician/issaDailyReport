@@ -7,7 +7,7 @@ from app.config import Settings
 from app.db import bootstrap_schema, create_pool
 
 REFERENCE_DIR = Path("Reference")
-DEPRECATED_MESSAGE_TEMPLATE_KEYS = ("ASK_NO_BUY_REASON",)
+DEPRECATED_UI_TRANSLATE_KEYS = ("ASK_NO_BUY_REASON",)
 
 
 async def main() -> None:
@@ -17,7 +17,7 @@ async def main() -> None:
         await bootstrap_schema(pool)
         await seed_stores(pool)
         await seed_users(pool)
-        await seed_message_templates(pool)
+        await seed_ui_translate(pool)
     finally:
         await pool.close()
 
@@ -92,23 +92,27 @@ async def seed_users(pool) -> None:
             )
 
 
-async def seed_message_templates(pool) -> None:
-    rows = _read_csv(REFERENCE_DIR / "message_template.csv", fieldnames=["key", "message"])
+async def seed_ui_translate(pool) -> None:
+    rows = _read_csv(REFERENCE_DIR / "ui_translate.csv", fieldnames=["key", "message"])
     async with pool.acquire() as connection:
         await connection.execute(
-            "DELETE FROM message_templates WHERE key = ANY($1::text[])",
-            list(DEPRECATED_MESSAGE_TEMPLATE_KEYS),
+            "DELETE FROM ui_translate WHERE key = ANY($1::text[])",
+            list(DEPRECATED_UI_TRANSLATE_KEYS),
         )
         for row in rows:
             await connection.execute(
                 """
-                INSERT INTO message_templates (key, message)
-                VALUES ($1, $2)
+                INSERT INTO ui_translate (key, category, message, description)
+                VALUES ($1, $2, $3, $4)
                 ON CONFLICT (key) DO UPDATE
-                SET message = EXCLUDED.message
+                SET category = EXCLUDED.category,
+                    message = EXCLUDED.message,
+                    description = EXCLUDED.description
                 """,
                 row["key"],
+                _template_category(row["key"]),
                 row["message"].replace("\\n", "\n"),
+                "",
             )
 
 
@@ -130,6 +134,28 @@ def _int_or_none(value: str) -> int | None:
 def _float_or_none(value: str) -> float | None:
     value = value.strip()
     return float(value) if value else None
+
+
+def _template_category(key: str) -> str:
+    if key.startswith("BUTTON_"):
+        return "button"
+    if key.startswith("ASK_"):
+        return "prompt"
+    if key.startswith("ADMIN_"):
+        return "admin_notification"
+    if key.startswith("STOCK_ISSUE_"):
+        return "stock_issue"
+    if key.startswith("STORE_"):
+        return "store_display"
+    if key.startswith("AREA_"):
+        return "area_display"
+    if key.startswith("DISTANCE_"):
+        return "distance_display"
+    if key.startswith("LOCATION_STATUS_"):
+        return "location_status"
+    if key.endswith("_COMMAND") or key.endswith("_ERROR") or key in {"SESSION_EXPIRED", "PRIVATE_CHAT_ONLY"}:
+        return "system"
+    return "message"
 
 
 if __name__ == "__main__":

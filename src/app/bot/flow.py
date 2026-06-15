@@ -31,7 +31,7 @@ from app.repositories.sessions import SessionsRepository
 from app.repositories.stores import StoresRepository
 from app.repositories.templates import TemplatesRepository
 from app.repositories.users import UsersRepository
-from app.templates import MessageTemplates, distance_meter, store_label
+from app.templates import MessageTemplates
 
 
 TEXT_STEPS: dict[Step, str] = {
@@ -180,8 +180,8 @@ class ReportFlow:
             await self._send(
                 update,
                 "STORE_CONFIRMATION",
-                store_label=store_label(candidate.store),
-                distance_meter=distance_meter(candidate.distance_meter),
+                store_label=await self._store_label(candidate.store),
+                distance_meter=await self._distance_meter(candidate.distance_meter),
                 reply_markup=await self._confirm_store_keyboard(),
             )
             return
@@ -195,6 +195,7 @@ class ReportFlow:
                 area_label=self._area_label(match.candidates),
                 reply_markup=store_list_keyboard(
                     match.candidates,
+                    await self._candidate_button_labels(match.candidates),
                     other_store_label=self._templates.render("BUTTON_OTHER_STORE"),
                 ),
             )
@@ -204,7 +205,10 @@ class ReportFlow:
         await self._send(
             update,
             "LOCATION_NOT_FOUND",
-            reply_markup=store_list_keyboard(match.candidates),
+            reply_markup=store_list_keyboard(
+                match.candidates,
+                await self._candidate_button_labels(match.candidates),
+            ),
         )
 
     async def _handle_pin(self, update: Update, session: dict[str, Any]) -> None:
@@ -552,7 +556,7 @@ class ReportFlow:
                 notification_key = "ADMIN_NOTIFICATION"
             message = await self._render(
                 notification_key,
-                store_label=store_label(store),
+                store_label=await self._store_label(store),
                 user_name=draft["user_name"],
                 report_date=report["report_date"],
                 traffic=report["traffic"],
@@ -563,12 +567,8 @@ class ReportFlow:
                 no_buy_reason=report["no_buy_reason"],
                 stock_issue=report["stock_issue"],
                 note=report["note"],
-                distance_meter=(
-                    distance_meter(float(report["distance_from_store_meter"]))
-                    if report["distance_from_store_meter"] is not None
-                    else "-"
-                ),
-                location_status=report["location_status"],
+                distance_meter=await self._distance_meter(report["distance_from_store_meter"]),
+                location_status=await self._location_status_label(report["location_status"]),
             )
             await send_admin_notification(
                 context.bot,
@@ -622,7 +622,7 @@ class ReportFlow:
         if store is None:
             await self._send(update, "UNKNOWN_COMMAND")
             return
-        tokens = build_summary(draft, store_label(store))
+        tokens = build_summary(draft, await self._store_label(store))
         await self._send(update, "REPORT_SUMMARY", reply_markup=await self._summary_keyboard(), **tokens)
 
     async def _show_manual_store_selection(self, update: Update, session: dict[str, Any]) -> None:
@@ -631,10 +631,10 @@ class ReportFlow:
         await self._persist(update, Step.MANUAL_STORE_SELECTION, draft)
         if has_submitted_location:
             candidates = await self._all_active_candidates_from_draft(draft)
-            reply_markup = store_list_keyboard(candidates)
+            reply_markup = store_list_keyboard(candidates, await self._candidate_button_labels(candidates))
         else:
             stores = await self._stores.list_active(self._settings.active_status)
-            reply_markup = manual_store_list_keyboard(stores)
+            reply_markup = manual_store_list_keyboard(stores, await self._store_labels(stores))
         await self._send(
             update,
             "MANUAL_STORE_SELECTION",
@@ -764,6 +764,32 @@ class ReportFlow:
 
     async def _refresh_templates(self) -> None:
         self._templates.update(await self._templates_repository.list_all())
+
+    async def _store_label(self, store: StoreLocation) -> str:
+        await self._refresh_templates()
+        return self._templates.render_store_label(store)
+
+    async def _store_labels(self, stores: list[StoreLocation]) -> dict[str, str]:
+        await self._refresh_templates()
+        return {store.store_id: self._templates.render_store_label(store) for store in stores}
+
+    async def _candidate_button_labels(self, candidates: list[StoreCandidate]) -> dict[str, str]:
+        await self._refresh_templates()
+        return {
+            candidate.store.store_id: self._templates.render_store_button_label(
+                candidate.store,
+                candidate.distance_meter,
+            )
+            for candidate in candidates
+        }
+
+    async def _distance_meter(self, distance: float | None) -> str:
+        await self._refresh_templates()
+        return self._templates.render_distance_meter(distance)
+
+    async def _location_status_label(self, status: str) -> str:
+        await self._refresh_templates()
+        return self._templates.render_location_status(status)
 
     async def _share_location_keyboard(self):
         await self._refresh_templates()
@@ -918,7 +944,7 @@ class ReportFlow:
         if not candidates:
             return self._templates.render("AREA_NEAREST_FALLBACK")
         first = candidates[0].store
-        area = f"{first.department_store} {first.branch}, {first.city}"
+        area = self._templates.render_area_label(first)
         if all(
             candidate.store.department_store == first.department_store
             and candidate.store.branch == first.branch

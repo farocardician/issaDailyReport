@@ -9,7 +9,7 @@ Dockerized Python 3.12 Telegram bot for daily per-store SPG reports. The app use
 - `src/app/bot/flow.py` wires Telegram updates, domain decisions, repositories, and replies.
 - `Reference/*.csv` are the seed inputs and are not modified by the app.
 - `sql/schema.sql` is applied idempotently on bot startup and by the seed script.
-- Bot prompts, button labels, area labels, and admin notification text are stored in `message_templates` and seeded from `Reference/message_template.csv`.
+- Bot prompts, button labels, store/area/distance display formats, stock issue labels, location status labels, and admin notification text are stored in `ui_translate` and seeded from `Reference/ui_translate.csv`.
 
 ## Setup
 
@@ -27,7 +27,15 @@ make up
 make seed
 ```
 
-After seeding, copy can be edited directly in the `message_templates` table with a database client. Running `make seed` again restores values from `Reference/message_template.csv`.
+After seeding, copy can be edited directly in the `ui_translate` table with a database client. Running `make seed` again restores values from `Reference/ui_translate.csv`.
+
+The `ui_translate` table is designed for a future admin CRUD page:
+
+- `key`: stable code key, do not edit unless the code is updated too.
+- `category`: grouping for admin screens and DB filtering.
+- `message`: editable text/template. Telegram HTML tags and `{{token}}` placeholders are supported.
+- `description`: optional admin note.
+- `updated_at`: maintained automatically when a row changes.
 
 5. Run pure domain tests:
 
@@ -66,6 +74,21 @@ ORDER BY created_at DESC;
 
 SELECT current_step FROM bot_sessions;
 ```
+
+## DBeaver Database Access
+
+The Postgres service is exposed only on localhost for local DB tools.
+
+Use these DBeaver settings:
+
+- Driver: `PostgreSQL`
+- Host: `localhost`
+- Port: value of `POSTGRES_HOST_PORT` from `.env`, default `55432`
+- Database: value of `POSTGRES_DB`
+- Username: value of `POSTGRES_USER`
+- Password: value of `POSTGRES_PASSWORD`
+
+For template editing, open table `ui_translate`. Edit the `message` column; keep `key` stable because the bot references those keys from code.
 
 ## Repomix Handoff
 
