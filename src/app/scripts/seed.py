@@ -7,6 +7,7 @@ from app.config import Settings
 from app.db import bootstrap_schema, create_pool
 
 REFERENCE_DIR = Path("Reference")
+DEPRECATED_MESSAGE_TEMPLATE_KEYS = ("ASK_NO_BUY_REASON",)
 
 
 async def main() -> None:
@@ -94,6 +95,10 @@ async def seed_users(pool) -> None:
 async def seed_message_templates(pool) -> None:
     rows = _read_csv(REFERENCE_DIR / "message_template.csv", fieldnames=["key", "message"])
     async with pool.acquire() as connection:
+        await connection.execute(
+            "DELETE FROM message_templates WHERE key = ANY($1::text[])",
+            list(DEPRECATED_MESSAGE_TEMPLATE_KEYS),
+        )
         for row in rows:
             await connection.execute(
                 """

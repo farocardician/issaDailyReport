@@ -9,6 +9,7 @@ Dockerized Python 3.12 Telegram bot for daily per-store SPG reports. The app use
 - `src/app/bot/flow.py` wires Telegram updates, domain decisions, repositories, and replies.
 - `Reference/*.csv` are the seed inputs and are not modified by the app.
 - `sql/schema.sql` is applied idempotently on bot startup and by the seed script.
+- Bot prompts, button labels, area labels, and admin notification text are stored in `message_templates` and seeded from `Reference/message_template.csv`.
 
 ## Setup
 
@@ -25,6 +26,8 @@ make up
 ```sh
 make seed
 ```
+
+After seeding, copy can be edited directly in the `message_templates` table with a database client. Running `make seed` again restores values from `Reference/message_template.csv`.
 
 5. Run pure domain tests:
 

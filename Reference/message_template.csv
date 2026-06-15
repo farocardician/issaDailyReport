@@ -1,6 +1,6 @@
 PRIVATE_CHAT_ONLY,Laporan hanya bisa dikirim melalui chat pribadi dengan bot ya.
-START,Halo 👋\n\nSaya akan bantu input laporan toko harian.\n\nTekan tombol <b>Share Location</b> di bawah ini supaya saya bisa cari toko terdekat.
-ASK_LOCATION,Silakan tekan tombol <b>Share Location</b> supaya saya bisa bantu cari toko terdekat.
+START,Halo 👋\n\nSaya akan bantu input laporan toko harian.\n\nTekan tombol <b>Bagikan Lokasi</b> di bawah ini supaya saya bisa cari toko terdekat.
+ASK_LOCATION,Silakan tekan tombol <b>Bagikan Lokasi</b> supaya saya bisa bantu cari toko terdekat.
 LOCATION_NOT_FOUND,Saya belum bisa memastikan toko dari lokasi ini.\n\nSilakan pilih toko secara manual.
 STORE_CONFIRMATION,Saya menemukan toko terdekat:\n\n<b>{{store_label}}</b>\n\nJarak kamu sekitar <b>{{distance_meter}}</b> dari toko.\n\nApakah benar ini toko yang mau dilaporkan?
 MULTIPLE_STORES_FOUND,Kamu sepertinya berada di area:\n\n<b>{{area_label}}</b>\n\nPilih toko yang mau dilaporkan:
@@ -8,16 +8,46 @@ MANUAL_STORE_SELECTION,Silakan pilih toko yang mau dilaporkan:
 ASK_PIN,Masukkan PIN kamu untuk lanjut.
 PIN_INVALID,PIN belum cocok. Silakan coba lagi.
 REPORT_ALREADY_EXISTS,Laporan untuk toko dan tanggal ini sudah ada.\n\nMau submit lagi sebagai koreksi?
-ASK_TRAFFIC,Berapa jumlah traffic / pengunjung hari ini?
-ASK_GMV,Berapa GMV / total penjualan offline hari ini?
-ASK_ONLINE_GMV,"Berapa GMV online hari ini?\n\nKalau tidak ada, isi 0."
-ASK_ORDER,Berapa jumlah order / transaksi hari ini?
-ASK_PIECES,Berapa jumlah pieces / item terjual hari ini?
-ASK_NO_BUY_REASON,"Alasan customer tidak jadi beli apa?\n\nContoh: harga, ukuran tidak ada, model kurang cocok.\nKalau tidak ada, isi -"
-ASK_STOCK_ISSUE,"Ada kendala stok?\n\nContoh: size habis, warna habis, barang belum datang.\nKalau tidak ada, isi -"
-ASK_NOTE,"Catatan tambahan?\n\nKalau tidak ada, isi -"
-REPORT_SUMMARY,Berikut ringkasan laporan:\n\n<b>{{store_label}}</b>\n\nTraffic: {{traffic}}\nGMV Offline: {{gmv}}\nGMV Online: {{online_gmv}}\nOrder: {{order}}\nPieces: {{pieces}}\n\nAlasan tidak beli:\n{{no_buy_reason}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nSubmit laporan ini?
+ASK_TRAFFIC,"Berapa jumlah traffic / pengunjung offline di toko hari ini?\n\nKetik angka saja, atau tekan <b>Tidak Ada</b> kalau tidak ada pengunjung offline."
+ASK_GMV,"Berapa GMV offline / penjualan dari transaksi di toko hari ini?\n\nKetik angka saja, atau tekan <b>Tidak Ada</b> kalau tidak ada."
+ASK_ONLINE_GMV,"Berapa GMV online hari ini?\n\nTermasuk live shopping, WhatsApp, marketplace, atau channel online lain.\nKetik angka saja, atau tekan <b>Tidak Ada</b> kalau tidak ada."
+ASK_ORDER,"Berapa total order / transaksi hari ini?\n\nGabungan offline + online.\nKetik angka saja, atau tekan <b>Tidak Ada</b> kalau tidak ada."
+ASK_PIECES,"Berapa total pieces / item terjual hari ini?\n\nGabungan offline + online.\nKetik angka saja, atau tekan <b>Tidak Ada</b> kalau tidak ada."
+ASK_STOCK_ISSUE,"Ada kendala stok?\n\n{{selected_issues}}\n\nPilih satu atau lebih, lalu tekan <b>Selesai</b>.\nKalau tidak ada kendala, tekan <b>Tidak Ada</b>.\nKalau ingin isi manual, tekan <b>Lainnya</b> atau langsung ketik kendalanya."
+ASK_NOTE,"Catatan tambahan?\n\nKetik catatan, atau tekan <b>Tidak Ada</b>."
+REPORT_SUMMARY,Berikut ringkasan laporan:\n\n<b>{{store_label}}</b>\n\nTraffic Offline: {{traffic}}\nGMV Offline: {{gmv}}\nGMV Online: {{online_gmv}}\nOrder Total: {{order}}\nPieces Total: {{pieces}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nSubmit laporan ini?
 SUBMIT_SUCCESS,Laporan berhasil dikirim. Terima kasih 🙏
 CANCELLED,"Baik, proses dibatalkan."
 UNKNOWN_COMMAND,Saya belum mengerti pesan ini.\n\nKetik /start untuk mulai laporan.
 SYSTEM_ERROR,"Maaf, sedang ada kendala sistem.\n\nSilakan coba lagi atau hubungi admin."
+SESSION_EXPIRED,Sesi sudah kedaluwarsa. Silakan kirim /start untuk mulai lagi.
+BUTTON_SHARE_LOCATION,Bagikan Lokasi
+BUTTON_CONFIRM_YES,Ya
+BUTTON_OTHER_STORE,Pilih toko lain
+BUTTON_SUBMIT,Kirim
+BUTTON_RESTART,Ulangi
+BUTTON_CANCEL,Batal
+BUTTON_DUPLICATE_CONFIRM,"Ya, koreksi"
+BUTTON_DUPLICATE_CANCEL,Batal
+BUTTON_NONE,Tidak Ada
+BUTTON_DONE,Selesai
+BUTTON_SKIP,Lewati
+BUTTON_STOCK_ISSUE_OTHER,Lainnya
+SELECTED_PREFIX,✓
+STOCK_ISSUE_OPTION_SIZE_EMPTY,Size habis
+STOCK_ISSUE_OPTION_COLOR_EMPTY,Warna habis
+STOCK_ISSUE_OPTION_NOT_ARRIVED,Barang belum datang
+STOCK_ISSUE_OPTION_STOCK_EMPTY,Stok kosong
+STOCK_ISSUE_SELECTED_EMPTY,Belum ada yang dipilih.
+STOCK_ISSUE_SELECTED_HEADER,Dipilih:
+STOCK_ISSUE_CUSTOM_PROMPT,Ketik kendala stok lainnya.
+STOCK_ISSUE_DETAIL_PROMPT,"Untuk kendala <b>{{issue}}</b>, SKU apa saja yang terdampak?\n\n{{sku_list}}\n\nKetik SKU satu per satu, atau beberapa SKU dipisahkan koma.\nTekan <b>Selesai</b> kalau sudah.\nTekan <b>Lewati</b> kalau tidak perlu isi SKU."
+STOCK_ISSUE_SKU_EMPTY,Belum ada SKU yang diinput.
+STOCK_ISSUE_SKU_HEADER,SKU yang sudah diinput:
+STOCK_ISSUE_DETAIL_EMPTY_VALUE,-
+STOCK_ISSUE_DETAIL_LINE,{{issue}}: {{sku_list}}
+STOCK_ISSUE_CUSTOM_LABEL,Lainnya
+AREA_NEAREST_FALLBACK,toko terdekat
+AREA_MULTIPLE_NEAREST,{{store_count}} toko terdekat
+ADMIN_NOTIFICATION,<b>Laporan toko harian</b>\n\nToko: <b>{{store_label}}</b>\nSPG: {{user_name}}\nTanggal: {{report_date}}\n\nTraffic Offline: {{traffic}}\nGMV Offline: {{offline_gmv}}\nGMV Online: {{online_gmv}}\nOrder Total: {{order_count}}\nPieces Total: {{pieces_sold}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nJarak: {{distance_meter}}\nLocation Status: <b>{{location_status}}</b>
+ADMIN_NOTIFICATION_CORRECTION,<b>⚠️ KOREKSI</b>\n\n<b>Laporan toko harian</b>\n\nToko: <b>{{store_label}}</b>\nSPG: {{user_name}}\nTanggal: {{report_date}}\n\nTraffic Offline: {{traffic}}\nGMV Offline: {{offline_gmv}}\nGMV Online: {{online_gmv}}\nOrder Total: {{order_count}}\nPieces Total: {{pieces_sold}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nJarak: {{distance_meter}}\nLocation Status: <b>{{location_status}}</b>

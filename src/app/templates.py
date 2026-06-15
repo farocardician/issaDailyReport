@@ -4,19 +4,12 @@ from typing import Any, Mapping
 from app.domain.store_matching import StoreLocation
 
 
-DEFAULT_MESSAGES = {
-    "CANCELLED": "Sesi dibatalkan.",
-    "UNKNOWN_COMMAND": "Maaf, saya belum memahami input ini. Silakan ikuti instruksi sebelumnya.",
-    "SESSION_EXPIRED": "Sesi sudah kedaluwarsa. Silakan kirim /start untuk mulai lagi.",
-}
-
-
 class MessageTemplates:
     def __init__(self, templates: Mapping[str, str]) -> None:
-        self._templates = {**DEFAULT_MESSAGES, **templates}
+        self._templates = dict(templates)
 
     def update(self, templates: Mapping[str, str]) -> None:
-        self._templates = {**DEFAULT_MESSAGES, **templates}
+        self._templates = dict(templates)
 
     def render(self, key: str, **tokens: Any) -> str:
         message = self._templates[key]
