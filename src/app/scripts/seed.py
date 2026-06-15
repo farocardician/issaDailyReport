@@ -7,7 +7,15 @@ from app.config import Settings
 from app.db import bootstrap_schema, create_pool
 
 REFERENCE_DIR = Path("Reference")
-DEPRECATED_UI_TRANSLATE_KEYS = ("ASK_NO_BUY_REASON",)
+DEPRECATED_UI_TRANSLATE_KEYS = (
+    "ASK_NO_BUY_REASON",
+    "PROGRESS_SUBSTEP_LABEL",
+    "PROGRESS_SUBSTEP_FORMAT",
+    "PROGRESS_WITH_SUBSTEP_FORMAT",
+    "PROGRESS_ISSUE_REASON",
+    "PROGRESS_ISSUE_STOCK",
+    "PROGRESS_ISSUE_NOTE",
+)
 
 
 async def main() -> None:
@@ -139,6 +147,8 @@ def _float_or_none(value: str) -> float | None:
 def _template_category(key: str) -> str:
     if key.startswith("BUTTON_"):
         return "button"
+    if key.startswith("PROGRESS_") or key.startswith("CONTEXTUAL_STEP_"):
+        return "progress"
     if key.startswith("ASK_"):
         return "prompt"
     if key.startswith("ADMIN_"):

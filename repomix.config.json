@@ -5,7 +5,7 @@
   },
   "output": {
     "filePath": "repomix-output.xml",
-    "style": "xml",
+    "style": "markdown",
     "parsableStyle": false,
     "compress": false,
     "headerText": "SPG Daily Store Reporting Telegram Bot. Use this packed repository to debug bugs or develop features while preserving the documented architecture, Telegram flow, and Docker-first workflow.",

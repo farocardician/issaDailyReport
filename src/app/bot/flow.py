@@ -20,6 +20,14 @@ from app.bot.keyboards import (
     summary_keyboard,
 )
 from app.bot.notifications import send_admin_notification
+from app.bot.progress import contextual_step_progress, progress_for_step
+from app.bot.stock_issue_text import (
+    current_detail_position,
+    next_detail_option_id,
+    parse_sku_values,
+    selected_issue_text,
+    sku_list_text,
+)
 from app.config import Settings
 from app.domain.geo import haversine_meters
 from app.domain.report import build_summary, generate_report_id, location_status
@@ -53,6 +61,13 @@ STOCK_ISSUE_OPTIONS = (
     ("stock_empty", "STOCK_ISSUE_OPTION_STOCK_EMPTY"),
 )
 
+STOCK_ISSUE_DETAIL_TITLE_KEYS = {
+    "size_empty": "STOCK_ISSUE_DETAIL_TITLE_SIZE_EMPTY",
+    "color_empty": "STOCK_ISSUE_DETAIL_TITLE_COLOR_EMPTY",
+    "not_arrived": "STOCK_ISSUE_DETAIL_TITLE_NOT_ARRIVED",
+    "stock_empty": "STOCK_ISSUE_DETAIL_TITLE_STOCK_EMPTY",
+}
+
 
 class ReportFlow:
     def __init__(
@@ -78,7 +93,12 @@ class ReportFlow:
             return
         await self._sessions.delete(update.effective_chat.id)
         await self._persist(update, Step.AWAITING_LOCATION, {})
-        await self._send(update, "START", reply_markup=await self._share_location_keyboard())
+        await self._send(
+            update,
+            "START",
+            reply_markup=await self._share_location_keyboard(),
+            progress_step=Step.AWAITING_LOCATION,
+        )
 
     async def handle_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._ensure_private(update):
@@ -155,7 +175,12 @@ class ReportFlow:
             return
 
         if update.message is None or update.message.location is None:
-            await self._send(update, "ASK_LOCATION", reply_markup=await self._share_location_keyboard())
+            await self._send(
+                update,
+                "ASK_LOCATION",
+                reply_markup=await self._share_location_keyboard(),
+                progress_step=Step.AWAITING_LOCATION,
+            )
             return
 
         location = update.message.location
@@ -183,6 +208,7 @@ class ReportFlow:
                 store_label=await self._store_label(candidate.store),
                 distance_meter=await self._distance_meter(candidate.distance_meter),
                 reply_markup=await self._confirm_store_keyboard(),
+                progress_step=Step.CONFIRM_STORE,
             )
             return
 
@@ -198,6 +224,7 @@ class ReportFlow:
                     await self._candidate_button_labels(match.candidates),
                     other_store_label=self._templates.render("BUTTON_OTHER_STORE"),
                 ),
+                progress_step=Step.CHOOSE_STORE,
             )
             return
 
@@ -209,12 +236,13 @@ class ReportFlow:
                 match.candidates,
                 await self._candidate_button_labels(match.candidates),
             ),
+            progress_step=Step.MANUAL_STORE_SELECTION,
         )
 
     async def _handle_pin(self, update: Update, session: dict[str, Any]) -> None:
         text = _message_text(update)
         if text is None:
-            await self._send(update, "ASK_PIN")
+            await self._send(update, "ASK_PIN", progress_step=Step.AWAITING_PIN)
             return
 
         users = await self._users.find_active_by_pin(text.strip(), self._settings.active_status)
@@ -442,7 +470,7 @@ class ReportFlow:
         text: str,
     ) -> None:
         current_option_id = draft["stock_issue_detail_option_id"]
-        sku_values = _parse_sku_values(text)
+        sku_values = parse_sku_values(text)
         if not sku_values:
             await self._send_stock_issue_detail_prompt(update, draft)
             return
@@ -471,15 +499,15 @@ class ReportFlow:
     ) -> None:
         detail_option_ids = list(draft.get("stock_issue_detail_option_ids", []))
         current_option_id = draft.get("stock_issue_detail_option_id")
-        next_index = detail_option_ids.index(current_option_id) + 1 if current_option_id in detail_option_ids else 0
+        next_option_id = next_detail_option_id(detail_option_ids, current_option_id)
 
-        if next_index >= len(detail_option_ids):
+        if next_option_id is None:
             stock_issue = await self._stock_issue_value(draft)
             await self._remove_callback_keyboard(update)
             await self._save_stock_issue_and_continue(update, session, stock_issue)
             return
 
-        draft["stock_issue_detail_option_id"] = detail_option_ids[next_index]
+        draft["stock_issue_detail_option_id"] = next_option_id
         await self._persist(
             update,
             Step.ASK_STOCK_ISSUE,
@@ -505,7 +533,12 @@ class ReportFlow:
                 selected_store_id=session["selected_store_id"],
                 user_id=session["user_id"],
             )
-            await self._send(update, "REPORT_ALREADY_EXISTS", reply_markup=await self._duplicate_keyboard())
+            await self._send(
+                update,
+                "REPORT_ALREADY_EXISTS",
+                reply_markup=await self._duplicate_keyboard(),
+                progress_step=Step.CONFIRM_DUPLICATE,
+            )
             return
 
         await self._save_and_complete(update, context, session, "submitted")
@@ -615,7 +648,7 @@ class ReportFlow:
             selected_store_id=store_id,
             user_id=session["user_id"],
         )
-        await self._send(update, "ASK_PIN", reply_markup=ReplyKeyboardRemove())
+        await self._send(update, "ASK_PIN", reply_markup=ReplyKeyboardRemove(), progress_step=Step.AWAITING_PIN)
 
     async def _send_summary(self, update: Update, draft: dict[str, Any], selected_store_id: str) -> None:
         store = await self._stores.get_by_id(selected_store_id)
@@ -623,7 +656,13 @@ class ReportFlow:
             await self._send(update, "UNKNOWN_COMMAND")
             return
         tokens = build_summary(draft, await self._store_label(store))
-        await self._send(update, "REPORT_SUMMARY", reply_markup=await self._summary_keyboard(), **tokens)
+        await self._send(
+            update,
+            "REPORT_SUMMARY",
+            reply_markup=await self._summary_keyboard(),
+            progress_step=Step.REVIEW_SUMMARY,
+            **tokens,
+        )
 
     async def _show_manual_store_selection(self, update: Update, session: dict[str, Any]) -> None:
         draft = dict(session["draft_report"])
@@ -639,6 +678,7 @@ class ReportFlow:
             update,
             "MANUAL_STORE_SELECTION",
             reply_markup=reply_markup,
+            progress_step=Step.MANUAL_STORE_SELECTION,
         )
 
     async def _all_active_candidates_from_draft(self, draft: dict[str, Any]) -> list[StoreCandidate]:
@@ -710,8 +750,17 @@ class ReportFlow:
             expires_at=now + timedelta(minutes=self._settings.session_ttl_minutes),
         )
 
-    async def _send(self, update: Update, key: str, reply_markup: Any = None, **tokens: Any) -> None:
+    async def _send(
+        self,
+        update: Update,
+        key: str,
+        reply_markup: Any = None,
+        progress_step: Step | None = None,
+        **tokens: Any,
+    ) -> None:
         await self._refresh_templates()
+        if progress_step is not None:
+            tokens["progress"] = progress_for_step(self._templates, progress_step)
         await update.effective_chat.send_message(
             text=self._templates.render(key, **tokens),
             parse_mode=ParseMode.HTML,
@@ -723,9 +772,9 @@ class ReportFlow:
             await self._send_stock_issue_prompt(update, {})
             return
         if step in NUMERIC_NONE_STEPS or step in TEXT_STEPS:
-            await self._send(update, step.value, reply_markup=await self._none_reply_keyboard())
+            await self._send(update, step.value, reply_markup=await self._none_reply_keyboard(), progress_step=step)
             return
-        await self._send(update, step.value, reply_markup=ReplyKeyboardRemove())
+        await self._send(update, step.value, reply_markup=ReplyKeyboardRemove(), progress_step=step)
 
     async def _send_stock_issue_prompt(self, update: Update, draft: dict[str, Any]) -> None:
         await self._send(
@@ -733,6 +782,7 @@ class ReportFlow:
             "ASK_STOCK_ISSUE",
             selected_issues=await self._stock_issue_selected_text(draft),
             reply_markup=await self._stock_issue_keyboard(draft),
+            progress_step=Step.ASK_STOCK_ISSUE,
         )
 
     async def _edit_stock_issue_prompt(self, update: Update, draft: dict[str, Any]) -> None:
@@ -741,7 +791,11 @@ class ReportFlow:
             return
         try:
             await update.callback_query.edit_message_text(
-                text=await self._render("ASK_STOCK_ISSUE", selected_issues=await self._stock_issue_selected_text(draft)),
+                text=await self._render(
+                    "ASK_STOCK_ISSUE",
+                    progress_step=Step.ASK_STOCK_ISSUE,
+                    selected_issues=await self._stock_issue_selected_text(draft),
+                ),
                 parse_mode=ParseMode.HTML,
                 reply_markup=await self._stock_issue_keyboard(draft),
             )
@@ -754,12 +808,16 @@ class ReportFlow:
             update,
             "STOCK_ISSUE_DETAIL_PROMPT",
             issue=await self._stock_issue_option_label(draft["stock_issue_detail_option_id"]),
+            detail_progress=await self._stock_issue_detail_progress(draft),
             sku_list=await self._stock_issue_sku_text(draft),
             reply_markup=await self._stock_issue_detail_keyboard(),
+            progress_step=Step.ASK_STOCK_ISSUE,
         )
 
-    async def _render(self, key: str, **tokens: Any) -> str:
+    async def _render(self, key: str, progress_step: Step | None = None, **tokens: Any) -> str:
         await self._refresh_templates()
+        if progress_step is not None:
+            tokens["progress"] = progress_for_step(self._templates, progress_step)
         return self._templates.render(key, **tokens)
 
     async def _refresh_templates(self) -> None:
@@ -846,14 +904,8 @@ class ReportFlow:
 
     async def _stock_issue_selected_text(self, draft: dict[str, Any]) -> str:
         selected = await self._stock_issue_category_values(draft)
-        if not selected:
-            return await self._render("STOCK_ISSUE_SELECTED_EMPTY")
         await self._refresh_templates()
-        selected_lines = [self._templates.render("STOCK_ISSUE_SELECTED_HEADER")]
-        selected_prefix = self._templates.render("SELECTED_PREFIX")
-        for issue in selected:
-            selected_lines.append(f"{selected_prefix} {issue}")
-        return "\n".join(selected_lines)
+        return selected_issue_text(self._templates, selected)
 
     async def _stock_issue_value(self, draft: dict[str, Any]) -> str:
         await self._refresh_templates()
@@ -899,19 +951,29 @@ class ReportFlow:
     async def _stock_issue_sku_text(self, draft: dict[str, Any]) -> str:
         current_option_id = draft["stock_issue_detail_option_id"]
         sku_values = list(dict(draft.get("stock_issue_sku_details", {})).get(current_option_id, []))
-        if not sku_values:
-            return await self._render("STOCK_ISSUE_SKU_EMPTY")
-
         await self._refresh_templates()
-        lines = [self._templates.render("STOCK_ISSUE_SKU_HEADER")]
-        selected_prefix = self._templates.render("SELECTED_PREFIX")
-        lines.extend(f"{selected_prefix} {sku}" for sku in sku_values)
-        return "\n".join(lines)
+        return sku_list_text(self._templates, sku_values)
 
     async def _stock_issue_option_label(self, option_id: str) -> str:
         await self._refresh_templates()
         option_templates = dict(STOCK_ISSUE_OPTIONS)
         return self._templates.render(option_templates[option_id])
+
+    async def _stock_issue_detail_title(self, option_id: str) -> str:
+        await self._refresh_templates()
+        return self._templates.render(STOCK_ISSUE_DETAIL_TITLE_KEYS[option_id])
+
+    async def _stock_issue_detail_progress(self, draft: dict[str, Any]) -> str:
+        detail_option_ids = list(draft.get("stock_issue_detail_option_ids", []))
+        current_option_id = draft["stock_issue_detail_option_id"]
+        await self._refresh_templates()
+        return contextual_step_progress(
+            self._templates,
+            "STOCK_ISSUE_DETAIL_STEP_LABEL",
+            current_detail_position(detail_option_ids, current_option_id),
+            len(detail_option_ids),
+            await self._stock_issue_detail_title(current_option_id),
+        )
 
     def _ordered_selected_stock_issue_ids(self, draft: dict[str, Any]) -> list[str]:
         selected_ids = set(draft.get("stock_issue_option_ids", []))
@@ -973,6 +1035,3 @@ def _message_text(update: Update) -> str | None:
         return None
     return update.message.text
 
-
-def _parse_sku_values(text: str) -> list[str]:
-    return [value.strip() for value in text.split(",") if value.strip()]
