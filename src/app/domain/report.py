@@ -20,12 +20,10 @@ def location_status(distance: float | None, effective_radius: int | None) -> str
 def build_summary(draft_report: dict[str, Any], store_label: str) -> dict[str, Any]:
     return {
         "store_label": store_label,
-        "traffic": draft_report["traffic"],
-        "gmv": draft_report["offline_gmv"],
-        "online_gmv": draft_report["online_gmv"],
-        "order": draft_report["order_count"],
-        "pieces": draft_report["pieces_sold"],
-        "no_buy_reason": draft_report["no_buy_reason"],
+        "sales_breakdown": draft_report["sales_breakdown"],
+        "total_gmv": draft_report["total_gmv"],
+        "total_order": draft_report["total_order"],
+        "total_pieces": draft_report["total_pieces"],
         "stock_issue": draft_report["stock_issue"],
         "note": draft_report["note"],
     }

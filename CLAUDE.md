@@ -38,11 +38,14 @@ When adding behavior, decide which layer owns it: **state transitions belong in 
 `bot_sessions.current_step` stores a `Step` enum value (`domain/session_state.py`). Sessions are keyed by `telegram_chat_id`, carry a JSONB `draft_report`, and expire after `SESSION_TTL_MINUTES` (checked in `flow._load_session_or_notify`).
 
 Happy path:
-`START → AWAITING_LOCATION → (CONFIRM_STORE | CHOOSE_STORE | MANUAL_STORE_SELECTION) → AWAITING_PIN → ASK_TRAFFIC → ASK_GMV → ASK_ONLINE_GMV → ASK_ORDER → ASK_PIECES → ASK_STOCK_ISSUE → ASK_NOTE → REVIEW_SUMMARY → (CONFIRM_DUPLICATE?) → DONE`
+`START → AWAITING_LOCATION → (CONFIRM_STORE | CHOOSE_STORE | MANUAL_STORE_SELECTION) → AWAITING_PIN → ASK_SALES_SOURCES → ASK_SALES_INPUT → REVIEW_SALES_SUMMARY → ASK_STOCK_ISSUE → ASK_NOTE → REVIEW_SUMMARY → (CONFIRM_DUPLICATE?) → DONE`
 
-Conditional shortcuts live in `apply_numeric_answer`:
-- `traffic == 0` → skip offline GMV, default `no_buy_reason`, jump to online GMV.
-- total GMV (offline + online) `== 0` → skip order/pieces, jump to stock issue.
+The **sales sub-flow** (steps 3 of 5, "Sumber Penjualan") replaces the old fixed traffic/GMV numeric questions:
+- `ASK_SALES_SOURCES` — inline multi-select of configurable sources from the `gmv_sources` table (Outlet, Whatsapp, Shopee, …). "Tidak Ada Penjualan" is a fixed action button (not a `gmv_sources` row): it writes no sales rows, sets `draft["sales_no_sales"]`, and skips straight to `ASK_STOCK_ISSUE`.
+- `ASK_SALES_INPUT` — one step that loops `(source, field)` per `domain.sales_sources.input_plan`. A source with `requires_traffic` asks traffic + GMV + order + pieces; others ask GMV + order + pieces. Position tracked by `draft["sales_input_plan"]` / `sales_input_pos`.
+- `REVIEW_SALES_SUMMARY` — reply-keyboard summary (Lanjutkan / Ubah / Batal). `Ubah` opens `EDIT_SALES_MENU`: edit one source's fields, or "Tambah / Hapus Sumber Penjualan" (re-opens the picker preselected, collecting input only for newly-added sources).
+
+Per-source values live in `draft["sales_data"]` (`{source_id: {label, source_type, requires_traffic, sort_order, traffic?, gmv, order_count, pieces_sold}}`). On submit, each becomes a `daily_report_sales` row with the label/type/flags **snapshotted**; totals are always computed from rows via `domain.sales_sources.sales_totals` (no aggregate columns on `daily_reports`).
 
 Store matching (`domain/store_matching.py`): haversine distance vs. an *effective radius* (`store.allowed_radius_meter` or `DEFAULT_RADIUS_METER`; a non-positive radius falls back to default). Result is `SINGLE` (1 in range → confirm), `MULTIPLE` (>1 → pick from list), or `NONE` (0 → returns all active stores sorted by distance for manual selection). `location_status` is `in_radius` / `out_of_radius` / `manual_store_selection` (the last when distance is unknown).
 
@@ -61,13 +64,13 @@ All user-facing strings — prompts, button labels, store/area/distance formats,
 
 ## Database / schema conventions
 
-There is no migration tool. `sql/schema.sql` **is** the migration and must stay idempotent and re-runnable: it uses `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and `DO $$ … $$` blocks (e.g. the `message_templates → ui_translate` rename). `db.bootstrap_schema` applies it on every bot startup and during seeding, then runs additional idempotent `ALTER`s (dropping NOT NULL on location columns, refreshing the `location_status` CHECK constraint). Any schema change must follow this idempotent, forward-only style.
+There is no migration tool. `sql/schema.sql` **is** the migration and must stay idempotent and re-runnable: it uses `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` / `DROP COLUMN IF EXISTS`, and `DO $$ … $$` blocks (e.g. the `message_templates → ui_translate` rename). `db.bootstrap_schema` applies it on every bot startup and during seeding, then runs additional idempotent `ALTER`s (dropping NOT NULL on location columns, refreshing the `location_status` CHECK constraint). Any schema change must follow this idempotent, forward-only style.
 
-Tables: `stores`, `users` (holds PINs), `daily_reports`, `bot_sessions`, `ui_translate`. Postgres is exposed only on `127.0.0.1:${POSTGRES_HOST_PORT}` (default `55432`) for local DB tools.
+Tables: `stores`, `users` (holds PINs), `daily_reports` (header only — sales lives in the child table), `daily_report_sales` (one row per sales source, with snapshot columns), `gmv_sources` (configurable sales-source list; `requires_traffic`, `sort_order`, `status`; seeded from `Reference/gmv_sources.csv`), `bot_sessions`, `ui_translate`. Postgres is exposed only on `127.0.0.1:${POSTGRES_HOST_PORT}` (default `55432`) for local DB tools.
 
 ## Testing approach
 
-`pytest` in `tests/` covers the pure domain modules and stateless bot helpers (`progress`, `stock_issue_text`, `keyboards`, `templates`, `location_flow`). Tests construct domain objects directly and assert on returned `Step`/`MatchType`/strings — they do not mock Telegram or hit the DB. Keep new domain logic testable this way: free functions and frozen dataclasses, no I/O.
+`pytest` in `tests/` covers the pure domain modules and stateless bot helpers (`progress`, `stock_issue_text`, `sales_text`, `keyboards`, `templates`) plus flow-level tests (`location_flow`, `sales_flow`). Domain/helper tests construct objects directly and assert on returned `Step`/`MatchType`/strings. Flow tests exercise the async `ReportFlow` via in-memory fakes (`_FakeSessions`, `_FakeSalesSources`, `_FakeChat`, fake `Update`/`CallbackQuery`) and `asyncio.run` — no Telegram, no DB. Keep new domain logic testable this way: free functions and frozen dataclasses, no I/O.
 
 ## Safe-change rules
 

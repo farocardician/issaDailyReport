@@ -14,6 +14,10 @@ from app.bot.keyboards import (
     manual_store_list_keyboard,
     none_reply_keyboard,
     retry_location_keyboard,
+    sales_edit_menu_keyboard,
+    sales_input_navigation_keyboard,
+    sales_source_keyboard,
+    sales_summary_keyboard,
     stock_issue_detail_keyboard,
     stock_issue_keyboard,
     start_location_keyboard,
@@ -22,6 +26,12 @@ from app.bot.keyboards import (
 )
 from app.bot.notifications import send_admin_notification
 from app.bot.progress import contextual_step_progress, progress_for_step
+from app.bot.sales_text import (
+    selected_sources_text,
+    sales_summary_text,
+    source_input_count,
+    source_input_position,
+)
 from app.bot.stock_issue_text import (
     continue_button_label,
     current_detail_position,
@@ -37,10 +47,12 @@ from app.bot.stock_issue_text import (
 from app.config import Settings
 from app.domain.geo import haversine_meters
 from app.domain.report import build_summary, generate_report_id, location_status
-from app.domain.session_state import NUMERIC_STEP_FIELDS, Step, apply_numeric_answer, next_step
+from app.domain.sales_sources import GmvSource, input_plan, source_fields
+from app.domain.session_state import Step, next_step
 from app.domain.store_matching import MatchType, StoreCandidate, StoreLocation, match_stores
 from app.domain.validation import normalize_text_dash, parse_int_lenient
 from app.repositories.reports import ReportsRepository
+from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
 from app.repositories.stores import StoresRepository
 from app.repositories.templates import TemplatesRepository
@@ -52,12 +64,11 @@ TEXT_STEPS: dict[Step, str] = {
     Step.ASK_NOTE: "note",
 }
 
-NUMERIC_NONE_STEPS = {
-    Step.ASK_TRAFFIC,
-    Step.ASK_GMV,
-    Step.ASK_ONLINE_GMV,
-    Step.ASK_ORDER,
-    Step.ASK_PIECES,
+SALES_FIELD_TEMPLATE_KEYS = {
+    "traffic": "ASK_SALES_TRAFFIC",
+    "gmv": "ASK_SALES_GMV",
+    "order_count": "ASK_SALES_ORDER",
+    "pieces_sold": "ASK_SALES_PIECES",
 }
 
 STOCK_ISSUE_OPTIONS = (
@@ -82,6 +93,7 @@ class ReportFlow:
         templates: MessageTemplates,
         templates_repository: TemplatesRepository,
         stores: StoresRepository,
+        sales_sources: SalesSourcesRepository,
         users: UsersRepository,
         reports: ReportsRepository,
         sessions: SessionsRepository,
@@ -90,6 +102,7 @@ class ReportFlow:
         self._templates = templates
         self._templates_repository = templates_repository
         self._stores = stores
+        self._sales_sources = sales_sources
         self._users = users
         self._reports = reports
         self._sessions = sessions
@@ -127,12 +140,14 @@ class ReportFlow:
             await self._handle_location(update, session, allow_manual_store_selection=False)
         elif step == Step.AWAITING_PIN:
             await self._handle_pin(update, session)
-        elif step in NUMERIC_STEP_FIELDS:
-            await self._handle_numeric(update, session, step)
+        elif step == Step.ASK_SALES_SOURCES:
+            await self._send_sales_sources_prompt(update, dict(session["draft_report"]))
+        elif step == Step.ASK_SALES_INPUT:
+            await self._handle_sales_input(update, session)
+        elif step == Step.REVIEW_SALES_SUMMARY:
+            await self._handle_sales_summary_text(update, session)
         elif step == Step.ASK_STOCK_ISSUE:
             await self._handle_stock_issue_text(update, session)
-        elif step == Step.ASK_NO_BUY_REASON:
-            await self._skip_no_buy_reason(update, session)
         elif step in TEXT_STEPS:
             await self._handle_text(update, session, step)
         else:
@@ -162,6 +177,10 @@ class ReportFlow:
             await self._show_manual_store_selection(update, session)
         elif step in {Step.CHOOSE_STORE, Step.MANUAL_STORE_SELECTION} and data.startswith("store:"):
             await self._select_store(update, session, data.removeprefix("store:"))
+        elif step == Step.ASK_SALES_SOURCES and data.startswith("sales_source:"):
+            await self._handle_sales_sources_callback(update, session, data)
+        elif step == Step.EDIT_SALES_MENU and data.startswith("sales_edit:"):
+            await self._handle_sales_edit_callback(update, session, data)
         elif step == Step.ASK_STOCK_ISSUE and data.startswith("stock_issue:"):
             await self._handle_stock_issue_callback(update, session, data)
         elif step == Step.REVIEW_SUMMARY and data == "summary:submit":
@@ -276,35 +295,184 @@ class ReportFlow:
         draft["user_name"] = user["name"]
         await self._persist(
             update,
-            Step.ASK_TRAFFIC,
+            Step.ASK_SALES_SOURCES,
             draft,
             selected_store_id=session["selected_store_id"],
             user_id=user["user_id"],
         )
-        await self._send_step_prompt(update, Step.ASK_TRAFFIC)
+        await self._send_sales_sources_prompt(update, draft)
 
-    async def _handle_numeric(self, update: Update, session: dict[str, Any], step: Step) -> None:
+    async def _handle_sales_sources_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
+        draft = dict(session["draft_report"])
+        sources = await self._active_sales_sources()
+
+        if data.startswith("sales_source:toggle:"):
+            source_id = data.removeprefix("sales_source:toggle:")
+            source_ids_by_order = [source.gmv_source_id for source in sources]
+            if source_id not in source_ids_by_order:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+
+            selected_ids = set(draft.get("sales_source_ids", []))
+            if source_id in selected_ids:
+                selected_ids.remove(source_id)
+            else:
+                selected_ids.add(source_id)
+            draft["sales_source_ids"] = [source_id for source_id in source_ids_by_order if source_id in selected_ids]
+            draft["sales_no_sales"] = False
+            await self._persist_sales_step(update, Step.ASK_SALES_SOURCES, session, draft)
+            await self._edit_sales_sources_prompt(update, draft)
+            return
+
+        if data == "sales_source:no_sales":
+            draft["sales_no_sales"] = True
+            draft.pop("sales_source_ids", None)
+            draft.pop("sales_data", None)
+            draft.pop("sales_input_plan", None)
+            draft.pop("sales_input_pos", None)
+            draft.pop("sales_return_to_summary", None)
+            await self._remove_callback_keyboard(update)
+            await self._persist_sales_step(update, Step.ASK_STOCK_ISSUE, session, draft)
+            await self._send_step_prompt(update, Step.ASK_STOCK_ISSUE)
+            return
+
+        if data == "sales_source:done":
+            if not draft.get("sales_source_ids"):
+                await self._edit_sales_sources_prompt(update, draft)
+                return
+            await self._start_sales_input(update, session, draft, sources)
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _handle_sales_input(self, update: Update, session: dict[str, Any]) -> None:
         text = _message_text(update)
         if text is None:
-            await self._send_step_prompt(update, step)
+            await self._send_sales_input_prompt(update, dict(session["draft_report"]))
             return
 
         text = text.strip()
-        try:
-            value = 0 if await self._is_none_answer(text) and step in NUMERIC_NONE_STEPS else parse_int_lenient(text)
-        except ValueError:
-            await self._send_step_prompt(update, step)
+        if await self._is_previous_answer(text):
+            await self._handle_sales_input_previous(update, session)
+            return
+        if await self._is_cancel_answer(text):
+            await self._cancel(update)
             return
 
-        following_step, draft = apply_numeric_answer(step, session["draft_report"], value)
-        await self._persist(
-            update,
-            following_step,
-            draft,
-            selected_store_id=session["selected_store_id"],
-            user_id=session["user_id"],
-        )
-        await self._send_step_prompt(update, following_step)
+        try:
+            value = parse_int_lenient(text)
+        except ValueError:
+            await self._send_sales_input_prompt(update, dict(session["draft_report"]))
+            return
+
+        draft = dict(session["draft_report"])
+        source_id, field = self._current_sales_input(draft)
+        sales_data = dict(draft.get("sales_data", {}))
+        current_source_data = dict(sales_data[source_id])
+        current_source_data[field] = value
+        sales_data[source_id] = current_source_data
+        draft["sales_data"] = sales_data
+        draft["sales_input_pos"] = int(draft.get("sales_input_pos", 0)) + 1
+
+        if draft["sales_input_pos"] >= len(draft.get("sales_input_plan", [])):
+            draft.pop("sales_input_plan", None)
+            draft.pop("sales_input_pos", None)
+            draft.pop("sales_return_to_summary", None)
+            draft.pop("sales_input_back_step", None)
+            await self._persist_sales_step(update, Step.REVIEW_SALES_SUMMARY, session, draft)
+            await self._send_sales_summary(update, draft)
+            return
+
+        await self._persist_sales_step(update, Step.ASK_SALES_INPUT, session, draft)
+        await self._send_sales_input_prompt(update, draft)
+
+    async def _handle_sales_input_previous(self, update: Update, session: dict[str, Any]) -> None:
+        draft = dict(session["draft_report"])
+        pos = int(draft.get("sales_input_pos", 0))
+        if pos > 0:
+            draft["sales_input_pos"] = pos - 1
+            await self._persist_sales_step(update, Step.ASK_SALES_INPUT, session, draft)
+            await self._send_sales_input_prompt(update, draft)
+            return
+
+        back_step = draft.get("sales_input_back_step")
+        draft.pop("sales_input_plan", None)
+        draft.pop("sales_input_pos", None)
+        draft.pop("sales_input_back_step", None)
+        if back_step == Step.EDIT_SALES_MENU.value:
+            await self._persist_sales_step(update, Step.EDIT_SALES_MENU, session, draft)
+            await self._send_sales_edit_menu(update, draft)
+            return
+
+        await self._persist_sales_step(update, Step.ASK_SALES_SOURCES, session, draft)
+        await self._send_sales_sources_prompt(update, draft)
+
+    async def _handle_sales_summary_text(self, update: Update, session: dict[str, Any]) -> None:
+        text = _message_text(update)
+        if text is None:
+            await self._send_sales_summary(update, dict(session["draft_report"]))
+            return
+
+        await self._refresh_templates()
+        answer = text.strip().casefold()
+        if answer == self._templates.render("BUTTON_SALES_CONTINUE").casefold():
+            await self._persist_sales_step(
+                update,
+                Step.ASK_STOCK_ISSUE,
+                session,
+                dict(session["draft_report"]),
+            )
+            await self._send_step_prompt(update, Step.ASK_STOCK_ISSUE)
+            return
+
+        if answer == self._templates.render("BUTTON_SALES_EDIT").casefold():
+            await self._persist_sales_step(
+                update,
+                Step.EDIT_SALES_MENU,
+                session,
+                dict(session["draft_report"]),
+            )
+            await self._send_sales_edit_menu(update, dict(session["draft_report"]))
+            return
+
+        if answer == self._templates.render("BUTTON_CANCEL").casefold():
+            await self._cancel(update)
+            return
+
+        await self._send_sales_summary(update, dict(session["draft_report"]))
+
+    async def _handle_sales_edit_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
+        draft = dict(session["draft_report"])
+        sales_data = dict(draft.get("sales_data", {}))
+
+        if data.startswith("sales_edit:source:"):
+            source_id = data.removeprefix("sales_edit:source:")
+            if source_id not in sales_data:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            draft["sales_input_plan"] = [
+                [source_id, field]
+                for field in source_fields(bool(sales_data[source_id]["requires_traffic"]))
+            ]
+            draft["sales_input_pos"] = 0
+            draft["sales_return_to_summary"] = True
+            draft["sales_input_back_step"] = Step.EDIT_SALES_MENU.value
+            await self._persist_sales_step(update, Step.ASK_SALES_INPUT, session, draft)
+            await self._send_sales_input_prompt(update, draft)
+            return
+
+        if data == "sales_edit:sources":
+            draft["sales_return_to_summary"] = True
+            await self._persist_sales_step(update, Step.ASK_SALES_SOURCES, session, draft)
+            await self._send_sales_sources_prompt(update, draft)
+            return
+
+        if data == "sales_edit:back":
+            await self._persist_sales_step(update, Step.REVIEW_SALES_SUMMARY, session, draft)
+            await self._send_sales_summary(update, draft)
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
 
     async def _handle_text(self, update: Update, session: dict[str, Any], step: Step) -> None:
         text = _message_text(update)
@@ -327,18 +495,6 @@ class ReportFlow:
             await self._send_summary(update, draft, session["selected_store_id"])
         else:
             await self._send_step_prompt(update, following_step)
-
-    async def _skip_no_buy_reason(self, update: Update, session: dict[str, Any]) -> None:
-        draft = dict(session["draft_report"])
-        draft["no_buy_reason"] = "-"
-        await self._persist(
-            update,
-            Step.ASK_STOCK_ISSUE,
-            draft,
-            selected_store_id=session["selected_store_id"],
-            user_id=session["user_id"],
-        )
-        await self._send_step_prompt(update, Step.ASK_STOCK_ISSUE)
 
     async def _handle_stock_issue_text(self, update: Update, session: dict[str, Any]) -> None:
         text = _message_text(update)
@@ -579,12 +735,6 @@ class ReportFlow:
             "report_date": now.date(),
             "store_id": session["selected_store_id"],
             "user_id": session["user_id"],
-            "traffic": draft["traffic"],
-            "offline_gmv": draft["offline_gmv"],
-            "online_gmv": draft["online_gmv"],
-            "order_count": draft["order_count"],
-            "pieces_sold": draft["pieces_sold"],
-            "no_buy_reason": draft["no_buy_reason"],
             "stock_issue": draft["stock_issue"],
             "submitted_latitude": draft.get("submitted_latitude"),
             "submitted_longitude": draft.get("submitted_longitude"),
@@ -594,7 +744,8 @@ class ReportFlow:
             "location_status": location_status(distance, effective_radius),
             "created_at": now,
         }
-        await self._reports.create(report)
+        sales_rows = self._sales_rows_from_draft(report["report_id"], draft)
+        await self._reports.create(report, sales_rows)
         await self._sessions.delete(update.effective_chat.id)
         await self._send(update, "SUBMIT_SUCCESS", reply_markup=ReplyKeyboardRemove())
 
@@ -603,21 +754,15 @@ class ReportFlow:
             notification_key = "ADMIN_NOTIFICATION_CORRECTION"
             if submission_status != "correction":
                 notification_key = "ADMIN_NOTIFICATION"
-            message = await self._render(
+            summary_tokens = await self._summary_tokens(draft, await self._store_label(store))
+            message = await self._render_trusted(
                 notification_key,
-                store_label=await self._store_label(store),
+                {"sales_breakdown"},
                 user_name=draft["user_name"],
                 report_date=report["report_date"],
-                traffic=report["traffic"],
-                offline_gmv=report["offline_gmv"],
-                online_gmv=report["online_gmv"],
-                order_count=report["order_count"],
-                pieces_sold=report["pieces_sold"],
-                no_buy_reason=report["no_buy_reason"],
-                stock_issue=report["stock_issue"],
-                note=report["note"],
                 distance_meter=await self._distance_meter(report["distance_from_store_meter"]),
                 location_status=await self._location_status_label(report["location_status"]),
+                **summary_tokens,
             )
             await send_admin_notification(
                 context.bot,
@@ -671,14 +816,214 @@ class ReportFlow:
         if store is None:
             await self._send(update, "UNKNOWN_COMMAND")
             return
-        tokens = build_summary(draft, await self._store_label(store))
-        await self._send(
+        tokens = await self._summary_tokens(draft, await self._store_label(store))
+        await self._send_trusted(
             update,
             "REPORT_SUMMARY",
+            {"sales_breakdown"},
             reply_markup=await self._summary_keyboard(),
             progress_step=Step.REVIEW_SUMMARY,
             **tokens,
         )
+
+    async def _send_sales_sources_prompt(self, update: Update, draft: dict[str, Any]) -> None:
+        await self._send(
+            update,
+            "ASK_SALES_SOURCES",
+            selected_sources=await self._sales_source_selected_text(draft),
+            reply_markup=await self._sales_source_keyboard(draft),
+            progress_step=Step.ASK_SALES_SOURCES,
+        )
+
+    async def _edit_sales_sources_prompt(self, update: Update, draft: dict[str, Any]) -> None:
+        if update.callback_query is None or update.callback_query.message is None:
+            await self._send_sales_sources_prompt(update, draft)
+            return
+        try:
+            await update.callback_query.edit_message_text(
+                text=await self._render(
+                    "ASK_SALES_SOURCES",
+                    progress_step=Step.ASK_SALES_SOURCES,
+                    selected_sources=await self._sales_source_selected_text(draft),
+                ),
+                parse_mode=ParseMode.HTML,
+                reply_markup=await self._sales_source_keyboard(draft),
+            )
+        except BadRequest as exc:
+            if "Message is not modified" not in str(exc):
+                raise
+
+    async def _start_sales_input(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        draft: dict[str, Any],
+        sources: list[GmvSource],
+    ) -> None:
+        source_by_id = {source.gmv_source_id: source for source in sources}
+        selected_ids = [
+            source.gmv_source_id
+            for source in sources
+            if source.gmv_source_id in set(draft.get("sales_source_ids", []))
+        ]
+        if not selected_ids:
+            draft["sales_source_ids"] = []
+            await self._persist_sales_step(update, Step.ASK_SALES_SOURCES, session, draft)
+            await self._edit_sales_sources_prompt(update, draft)
+            return
+
+        existing_sales_data = dict(draft.get("sales_data", {}))
+        sales_data: dict[str, dict[str, Any]] = {}
+        for source_id in selected_ids:
+            source = source_by_id[source_id]
+            current = dict(existing_sales_data.get(source_id, {}))
+            current.setdefault("label", source.label)
+            current.setdefault("source_type", source.source_type)
+            current.setdefault("requires_traffic", source.requires_traffic)
+            current.setdefault("sort_order", source.sort_order)
+            sales_data[source_id] = current
+
+        specs = [(source_id, bool(sales_data[source_id]["requires_traffic"])) for source_id in selected_ids]
+        plan = [
+            [source_id, field]
+            for source_id, field in input_plan(specs)
+            if field not in sales_data[source_id]
+        ]
+
+        draft["sales_no_sales"] = False
+        draft["sales_source_ids"] = selected_ids
+        draft["sales_data"] = sales_data
+        if not plan:
+            draft.pop("sales_input_plan", None)
+            draft.pop("sales_input_pos", None)
+            draft.pop("sales_return_to_summary", None)
+            draft.pop("sales_input_back_step", None)
+            await self._persist_sales_step(update, Step.REVIEW_SALES_SUMMARY, session, draft)
+            await self._send_sales_summary(update, draft)
+            return
+
+        draft["sales_input_plan"] = plan
+        draft["sales_input_pos"] = 0
+        draft["sales_return_to_summary"] = bool(draft.get("sales_return_to_summary", False))
+        draft["sales_input_back_step"] = Step.ASK_SALES_SOURCES.value
+        await self._persist_sales_step(update, Step.ASK_SALES_INPUT, session, draft)
+        await self._send_sales_input_prompt(update, draft)
+
+    async def _send_sales_input_prompt(self, update: Update, draft: dict[str, Any]) -> None:
+        source_id, field = self._current_sales_input(draft)
+        source_data = dict(draft["sales_data"][source_id])
+        source_ids = list(draft["sales_source_ids"])
+        await self._refresh_templates()
+        source_progress = contextual_step_progress(
+            self._templates,
+            "SALES_SOURCE_STEP_LABEL",
+            source_input_position(source_ids, source_id),
+            source_input_count(source_ids),
+            source_data["label"],
+        )
+        await self._send(
+            update,
+            SALES_FIELD_TEMPLATE_KEYS[field],
+            source=source_data["label"],
+            source_progress=source_progress,
+            reply_markup=await self._sales_input_navigation_keyboard(),
+            progress_step=Step.ASK_SALES_INPUT,
+        )
+
+    async def _send_sales_summary(self, update: Update, draft: dict[str, Any]) -> None:
+        await self._send_trusted(
+            update,
+            "SALES_SUMMARY",
+            {"sales_breakdown"},
+            reply_markup=await self._sales_summary_keyboard(),
+            progress_step=Step.REVIEW_SALES_SUMMARY,
+            **await self._sales_summary_tokens(draft),
+        )
+
+    async def _send_sales_edit_menu(self, update: Update, draft: dict[str, Any]) -> None:
+        await self._send(
+            update,
+            "EDIT_SALES_MENU",
+            reply_markup=await self._sales_edit_menu_keyboard(draft),
+            progress_step=Step.EDIT_SALES_MENU,
+        )
+
+    async def _sales_source_selected_text(self, draft: dict[str, Any]) -> str:
+        selected_ids = list(draft.get("sales_source_ids", []))
+        active_sources = {source.gmv_source_id: source for source in await self._active_sales_sources()}
+        sales_data = dict(draft.get("sales_data", {}))
+        labels = []
+        for source_id in selected_ids:
+            label = None
+            if source_id in sales_data:
+                label = dict(sales_data[source_id]).get("label")
+            if label is None and source_id in active_sources:
+                label = active_sources[source_id].label
+            if label is not None:
+                labels.append(label)
+        await self._refresh_templates()
+        return selected_sources_text(self._templates, labels)
+
+    async def _sales_source_next_label(self, draft: dict[str, Any]) -> str | None:
+        selected_ids = list(draft.get("sales_source_ids", []))
+        if not selected_ids:
+            return None
+
+        active_sources = {source.gmv_source_id: source for source in await self._active_sales_sources()}
+        sales_data = dict(draft.get("sales_data", {}))
+        source_id = selected_ids[0]
+        label = dict(sales_data.get(source_id, {})).get("label")
+        if label is None and source_id in active_sources:
+            label = active_sources[source_id].label
+        if label is None:
+            return None
+
+        await self._refresh_templates()
+        return self._templates.render_plain("BUTTON_SALES_INPUT_NEXT", source=label)
+
+    async def _sales_summary_tokens(self, draft: dict[str, Any]) -> dict[str, str | int]:
+        await self._refresh_templates()
+        return sales_summary_text(self._templates, self._ordered_sales_rows_from_draft(draft))
+
+    async def _summary_tokens(self, draft: dict[str, Any], store_label: str) -> dict[str, Any]:
+        return build_summary({**draft, **await self._sales_summary_tokens(draft)}, store_label)
+
+    async def _active_sales_sources(self) -> list[GmvSource]:
+        return await self._sales_sources.list_active(self._settings.active_status)
+
+    def _current_sales_input(self, draft: dict[str, Any]) -> tuple[str, str]:
+        plan = list(draft.get("sales_input_plan", []))
+        source_id, field = plan[int(draft.get("sales_input_pos", 0))]
+        return str(source_id), str(field)
+
+    def _ordered_sales_rows_from_draft(self, draft: dict[str, Any]) -> list[dict[str, Any]]:
+        if draft.get("sales_no_sales"):
+            return []
+        sales_data = dict(draft.get("sales_data", {}))
+        return [
+            {**dict(sales_data[source_id]), "gmv_source_id": source_id}
+            for source_id in draft.get("sales_source_ids", [])
+            if source_id in sales_data
+        ]
+
+    def _sales_rows_from_draft(self, report_id: str, draft: dict[str, Any]) -> list[dict[str, Any]]:
+        rows = []
+        for source in self._ordered_sales_rows_from_draft(draft):
+            rows.append(
+                {
+                    "report_id": report_id,
+                    "gmv_source_id": source["gmv_source_id"],
+                    "source_label": source.get("source_label") or source["label"],
+                    "source_type": source["source_type"],
+                    "requires_traffic": bool(source["requires_traffic"]),
+                    "traffic": int(source["traffic"]) if bool(source["requires_traffic"]) else None,
+                    "gmv": int(source["gmv"]),
+                    "order_count": int(source["order_count"]),
+                    "pieces_sold": int(source["pieces_sold"]),
+                    "sort_order": int(source["sort_order"]),
+                }
+            )
+        return rows
 
     async def _show_manual_store_selection(self, update: Update, session: dict[str, Any]) -> None:
         draft = dict(session["draft_report"])
@@ -766,6 +1111,21 @@ class ReportFlow:
             expires_at=now + timedelta(minutes=self._settings.session_ttl_minutes),
         )
 
+    async def _persist_sales_step(
+        self,
+        update: Update,
+        step: Step,
+        session: dict[str, Any],
+        draft: dict[str, Any],
+    ) -> None:
+        await self._persist(
+            update,
+            step,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+
     async def _send(
         self,
         update: Update,
@@ -783,11 +1143,29 @@ class ReportFlow:
             reply_markup=reply_markup,
         )
 
+    async def _send_trusted(
+        self,
+        update: Update,
+        key: str,
+        trusted_tokens: set[str],
+        reply_markup: Any = None,
+        progress_step: Step | None = None,
+        **tokens: Any,
+    ) -> None:
+        await self._refresh_templates()
+        if progress_step is not None:
+            tokens["progress"] = progress_for_step(self._templates, progress_step)
+        await update.effective_chat.send_message(
+            text=self._templates.render_trusted(key, trusted_tokens, **tokens),
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup,
+        )
+
     async def _send_step_prompt(self, update: Update, step: Step) -> None:
         if step == Step.ASK_STOCK_ISSUE:
             await self._send_stock_issue_prompt(update, {})
             return
-        if step in NUMERIC_NONE_STEPS or step in TEXT_STEPS:
+        if step in TEXT_STEPS:
             await self._send(update, step.value, reply_markup=await self._none_reply_keyboard(), progress_step=step)
             return
         await self._send(update, step.value, reply_markup=ReplyKeyboardRemove(), progress_step=step)
@@ -836,6 +1214,18 @@ class ReportFlow:
         if progress_step is not None:
             tokens["progress"] = progress_for_step(self._templates, progress_step)
         return self._templates.render(key, **tokens)
+
+    async def _render_trusted(
+        self,
+        key: str,
+        trusted_tokens: set[str],
+        progress_step: Step | None = None,
+        **tokens: Any,
+    ) -> str:
+        await self._refresh_templates()
+        if progress_step is not None:
+            tokens["progress"] = progress_for_step(self._templates, progress_step)
+        return self._templates.render_trusted(key, trusted_tokens, **tokens)
 
     async def _refresh_templates(self) -> None:
         self._templates.update(await self._templates_repository.list_all())
@@ -908,6 +1298,44 @@ class ReportFlow:
     async def _none_reply_keyboard(self):
         await self._refresh_templates()
         return none_reply_keyboard(self._templates.render("BUTTON_NONE"))
+
+    async def _sales_source_keyboard(self, draft: dict[str, Any]):
+        await self._refresh_templates()
+        options = [(source.gmv_source_id, source.label) for source in await self._active_sales_sources()]
+        return sales_source_keyboard(
+            options,
+            set(draft.get("sales_source_ids", [])),
+            self._templates.render("SELECTED_PREFIX"),
+            self._templates.render("BUTTON_NO_SALES"),
+            await self._sales_source_next_label(draft),
+        )
+
+    async def _sales_input_navigation_keyboard(self):
+        await self._refresh_templates()
+        return sales_input_navigation_keyboard(
+            self._templates.render("BUTTON_PREVIOUS"),
+            self._templates.render("BUTTON_CANCEL"),
+        )
+
+    async def _sales_summary_keyboard(self):
+        await self._refresh_templates()
+        return sales_summary_keyboard(
+            self._templates.render("BUTTON_SALES_CONTINUE"),
+            self._templates.render("BUTTON_SALES_EDIT"),
+            self._templates.render("BUTTON_CANCEL"),
+        )
+
+    async def _sales_edit_menu_keyboard(self, draft: dict[str, Any]):
+        await self._refresh_templates()
+        sources = [
+            (row["gmv_source_id"], row.get("source_label") or row["label"])
+            for row in self._ordered_sales_rows_from_draft(draft)
+        ]
+        return sales_edit_menu_keyboard(
+            sources,
+            self._templates.render("BUTTON_EDIT_SOURCES"),
+            self._templates.render("BUTTON_BACK_TO_SUMMARY"),
+        )
 
     async def _stock_issue_keyboard(self, draft: dict[str, Any]):
         await self._refresh_templates()
@@ -1038,6 +1466,14 @@ class ReportFlow:
     async def _is_none_answer(self, text: str) -> bool:
         await self._refresh_templates()
         return text.strip().casefold() == self._templates.render("BUTTON_NONE").casefold()
+
+    async def _is_previous_answer(self, text: str) -> bool:
+        await self._refresh_templates()
+        return text.strip().casefold() == self._templates.render("BUTTON_PREVIOUS").casefold()
+
+    async def _is_cancel_answer(self, text: str) -> bool:
+        await self._refresh_templates()
+        return text.strip().casefold() == self._templates.render("BUTTON_CANCEL").casefold()
 
     async def _is_manual_store_answer(self, text: str) -> bool:
         await self._refresh_templates()

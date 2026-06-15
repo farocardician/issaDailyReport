@@ -8,7 +8,17 @@ from app.db import bootstrap_schema, create_pool
 
 REFERENCE_DIR = Path("Reference")
 DEPRECATED_UI_TRANSLATE_KEYS = (
+    "ASK_TRAFFIC",
+    "ASK_GMV",
+    "ASK_ONLINE_GMV",
+    "ASK_ORDER",
+    "ASK_PIECES",
     "ASK_NO_BUY_REASON",
+    "PROGRESS_PHASE_TRAFFIC",
+    "PROGRESS_PHASE_GMV_OFFLINE",
+    "PROGRESS_PHASE_GMV_ONLINE",
+    "PROGRESS_PHASE_ORDER_PIECES",
+    "BUTTON_SALES_DONE",
     "PROGRESS_SUBSTEP_LABEL",
     "PROGRESS_SUBSTEP_FORMAT",
     "PROGRESS_WITH_SUBSTEP_FORMAT",
@@ -25,6 +35,7 @@ async def main() -> None:
         await bootstrap_schema(pool)
         await seed_stores(pool)
         await seed_users(pool)
+        await seed_gmv_sources(pool)
         await seed_ui_translate(pool)
     finally:
         await pool.close()
@@ -100,6 +111,32 @@ async def seed_users(pool) -> None:
             )
 
 
+async def seed_gmv_sources(pool) -> None:
+    rows = _read_csv(REFERENCE_DIR / "gmv_sources.csv")
+    async with pool.acquire() as connection:
+        for row in rows:
+            await connection.execute(
+                """
+                INSERT INTO gmv_sources (
+                    gmv_source_id, label, source_type, requires_traffic, sort_order, status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (gmv_source_id) DO UPDATE
+                SET label = EXCLUDED.label,
+                    source_type = EXCLUDED.source_type,
+                    requires_traffic = EXCLUDED.requires_traffic,
+                    sort_order = EXCLUDED.sort_order,
+                    status = EXCLUDED.status
+                """,
+                row["Gmv_Source_ID"],
+                row["Label"],
+                row["Source_Type"],
+                _bool(row["Requires_Traffic"]),
+                int(row["Sort_Order"]),
+                row["Status"],
+            )
+
+
 async def seed_ui_translate(pool) -> None:
     rows = _read_csv(REFERENCE_DIR / "ui_translate.csv", fieldnames=["key", "message"])
     async with pool.acquire() as connection:
@@ -144,6 +181,10 @@ def _float_or_none(value: str) -> float | None:
     return float(value) if value else None
 
 
+def _bool(value: str) -> bool:
+    return value.strip().casefold() == "true"
+
+
 def _template_category(key: str) -> str:
     if key.startswith("BUTTON_"):
         return "button"
@@ -153,6 +194,8 @@ def _template_category(key: str) -> str:
         return "prompt"
     if key.startswith("ADMIN_"):
         return "admin_notification"
+    if key.startswith("SALES_"):
+        return "sales"
     if key.startswith("STOCK_ISSUE_"):
         return "stock_issue"
     if key.startswith("STORE_"):

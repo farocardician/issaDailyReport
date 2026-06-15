@@ -1,69 +1,22 @@
-from app.domain.session_state import Step, apply_numeric_answer
+from app.domain.session_state import Step, next_step
 
 
-def test_zero_traffic_sets_offline_gmv_and_skips_to_online_gmv() -> None:
-    next_step, draft = apply_numeric_answer(Step.ASK_TRAFFIC, {}, 0)
+def test_sales_source_steps_replace_legacy_numeric_steps() -> None:
+    step_values = {step.value for step in Step}
 
-    assert next_step == Step.ASK_ONLINE_GMV
-    assert draft["traffic"] == 0
-    assert draft["offline_gmv"] == 0
-    assert draft["no_buy_reason"] == "-"
-
-
-def test_zero_traffic_and_zero_online_gmv_skips_order_pieces_and_no_buy_reason() -> None:
-    next_step, draft = apply_numeric_answer(
-        Step.ASK_ONLINE_GMV,
-        {"traffic": 0, "offline_gmv": 0, "no_buy_reason": "-"},
-        0,
-    )
-
-    assert next_step == Step.ASK_STOCK_ISSUE
-    assert draft["online_gmv"] == 0
-    assert draft["order_count"] == 0
-    assert draft["pieces_sold"] == 0
-    assert draft["no_buy_reason"] == "-"
+    assert "ASK_SALES_SOURCES" in step_values
+    assert "ASK_SALES_INPUT" in step_values
+    assert "REVIEW_SALES_SUMMARY" in step_values
+    assert "EDIT_SALES_MENU" in step_values
+    assert "ASK_TRAFFIC" not in step_values
+    assert "ASK_GMV" not in step_values
+    assert "ASK_ONLINE_GMV" not in step_values
+    assert "ASK_ORDER" not in step_values
+    assert "ASK_PIECES" not in step_values
+    assert "ASK_NO_BUY_REASON" not in step_values
 
 
-def test_zero_traffic_and_online_sales_asks_order_then_skips_no_buy_after_pieces() -> None:
-    next_step, draft = apply_numeric_answer(
-        Step.ASK_ONLINE_GMV,
-        {"traffic": 0, "offline_gmv": 0, "no_buy_reason": "-"},
-        100000,
-    )
-
-    assert next_step == Step.ASK_ORDER
-    next_step, draft = apply_numeric_answer(Step.ASK_ORDER, draft, 2)
-    assert next_step == Step.ASK_PIECES
-    next_step, draft = apply_numeric_answer(Step.ASK_PIECES, draft, 3)
-    assert next_step == Step.ASK_STOCK_ISSUE
-    assert draft["order_count"] == 2
-    assert draft["pieces_sold"] == 3
-    assert draft["no_buy_reason"] == "-"
-
-
-def test_positive_traffic_and_zero_total_gmv_skips_order_pieces_and_no_buy_reason() -> None:
-    next_step, draft = apply_numeric_answer(Step.ASK_TRAFFIC, {}, 5)
-    assert next_step == Step.ASK_GMV
-    next_step, draft = apply_numeric_answer(Step.ASK_GMV, draft, 0)
-    assert next_step == Step.ASK_ONLINE_GMV
-    next_step, draft = apply_numeric_answer(Step.ASK_ONLINE_GMV, draft, 0)
-
-    assert next_step == Step.ASK_STOCK_ISSUE
-    assert draft["order_count"] == 0
-    assert draft["pieces_sold"] == 0
-    assert draft["no_buy_reason"] == "-"
-
-
-def test_positive_traffic_and_any_gmv_asks_order_pieces_then_stock_issue() -> None:
-    next_step, draft = apply_numeric_answer(Step.ASK_TRAFFIC, {}, 5)
-    assert next_step == Step.ASK_GMV
-    next_step, draft = apply_numeric_answer(Step.ASK_GMV, draft, 100000)
-    assert next_step == Step.ASK_ONLINE_GMV
-    next_step, draft = apply_numeric_answer(Step.ASK_ONLINE_GMV, draft, 0)
-    assert next_step == Step.ASK_ORDER
-    next_step, draft = apply_numeric_answer(Step.ASK_ORDER, draft, 1)
-    assert next_step == Step.ASK_PIECES
-    next_step, draft = apply_numeric_answer(Step.ASK_PIECES, draft, 2)
-
-    assert next_step == Step.ASK_STOCK_ISSUE
-    assert draft["no_buy_reason"] == "-"
+def test_remaining_linear_transitions() -> None:
+    assert next_step(Step.START) == Step.AWAITING_LOCATION
+    assert next_step(Step.ASK_STOCK_ISSUE) == Step.ASK_NOTE
+    assert next_step(Step.ASK_NOTE) == Step.REVIEW_SUMMARY

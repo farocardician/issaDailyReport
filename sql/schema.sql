@@ -24,17 +24,23 @@ CREATE TABLE IF NOT EXISTS users (
     notes text
 );
 
+CREATE TABLE IF NOT EXISTS gmv_sources (
+    gmv_source_id text PRIMARY KEY,
+    label text NOT NULL,
+    source_type text NOT NULL DEFAULT 'other',
+    requires_traffic boolean NOT NULL DEFAULT false,
+    sort_order integer NOT NULL DEFAULT 0,
+    status text NOT NULL DEFAULT 'Aktif'
+);
+
+CREATE INDEX IF NOT EXISTS idx_gmv_sources_active_order
+    ON gmv_sources(status, sort_order);
+
 CREATE TABLE IF NOT EXISTS daily_reports (
     report_id text PRIMARY KEY,
     report_date date NOT NULL,
     store_id text NOT NULL REFERENCES stores(store_id),
     user_id text NOT NULL REFERENCES users(user_id),
-    traffic integer NOT NULL,
-    offline_gmv numeric NOT NULL,
-    online_gmv numeric NOT NULL,
-    order_count integer NOT NULL,
-    pieces_sold integer NOT NULL,
-    no_buy_reason text NOT NULL,
     stock_issue text NOT NULL,
     submitted_latitude double precision,
     submitted_longitude double precision,
@@ -44,6 +50,31 @@ CREATE TABLE IF NOT EXISTS daily_reports (
     location_status text NOT NULL CHECK (location_status IN ('in_radius', 'out_of_radius', 'manual_store_selection')),
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE daily_reports
+    DROP COLUMN IF EXISTS traffic,
+    DROP COLUMN IF EXISTS offline_gmv,
+    DROP COLUMN IF EXISTS online_gmv,
+    DROP COLUMN IF EXISTS order_count,
+    DROP COLUMN IF EXISTS pieces_sold,
+    DROP COLUMN IF EXISTS no_buy_reason;
+
+CREATE TABLE IF NOT EXISTS daily_report_sales (
+    report_id text NOT NULL REFERENCES daily_reports(report_id) ON DELETE CASCADE,
+    gmv_source_id text NOT NULL REFERENCES gmv_sources(gmv_source_id),
+    source_label text NOT NULL,
+    source_type text,
+    requires_traffic boolean NOT NULL DEFAULT false,
+    traffic integer,
+    gmv numeric NOT NULL,
+    order_count integer NOT NULL,
+    pieces_sold integer NOT NULL,
+    sort_order integer NOT NULL DEFAULT 0,
+    PRIMARY KEY (report_id, gmv_source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_report_sales_report
+    ON daily_report_sales(report_id);
 
 CREATE TABLE IF NOT EXISTS bot_sessions (
     telegram_chat_id bigint PRIMARY KEY,

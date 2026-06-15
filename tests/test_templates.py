@@ -49,6 +49,17 @@ def test_message_render_escapes_plain_store_label_once() -> None:
     assert templates.render("MESSAGE_WITH_STORE", store_label=store_label) == "<b>VIZU – Mall &amp; Co Utama, Jakarta</b>"
 
 
+def test_trusted_render_preserves_selected_html_token() -> None:
+    templates = MessageTemplates({"MESSAGE": "{{safe}}\n{{unsafe}}"})
+
+    assert templates.render_trusted(
+        "MESSAGE",
+        {"safe"},
+        safe="<b>Outlet</b>",
+        unsafe="<b>Bad</b>",
+    ) == "<b>Outlet</b>\n&lt;b&gt;Bad&lt;/b&gt;"
+
+
 def test_template_backed_location_status_labels() -> None:
     templates = _templates()
 

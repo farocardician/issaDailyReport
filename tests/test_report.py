@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.domain.report import generate_report_id, location_status
+from app.domain.report import build_summary, generate_report_id, location_status
 
 
 def test_location_status() -> None:
@@ -18,3 +18,25 @@ def test_generate_report_id_format() -> None:
     report_id = generate_report_id(now)
 
     assert re.match(r"^RPT-20260613-222600-\d{4}$", report_id)
+
+
+def test_build_summary_uses_sales_breakdown_tokens() -> None:
+    assert build_summary(
+        {
+            "sales_breakdown": "Outlet: GMV 100.000",
+            "total_gmv": "100.000",
+            "total_order": 2,
+            "total_pieces": 3,
+            "stock_issue": "-",
+            "note": "OK",
+        },
+        "VIZU - Mall",
+    ) == {
+        "store_label": "VIZU - Mall",
+        "sales_breakdown": "Outlet: GMV 100.000",
+        "total_gmv": "100.000",
+        "total_order": 2,
+        "total_pieces": 3,
+        "stock_issue": "-",
+        "note": "OK",
+    }

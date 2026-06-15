@@ -14,6 +14,9 @@ class MessageTemplates:
     def render(self, key: str, **tokens: Any) -> str:
         return self._render(key, tokens, escape_tokens=True)
 
+    def render_trusted(self, key: str, trusted_tokens: set[str], **tokens: Any) -> str:
+        return self._render(key, tokens, escape_tokens=True, trusted_tokens=trusted_tokens)
+
     def render_plain(self, key: str, **tokens: Any) -> str:
         return self._render(key, tokens, escape_tokens=False)
 
@@ -49,10 +52,17 @@ class MessageTemplates:
     def render_location_status(self, status: str) -> str:
         return self.render_plain(f"LOCATION_STATUS_{status.upper()}")
 
-    def _render(self, key: str, tokens: Mapping[str, Any], escape_tokens: bool) -> str:
+    def _render(
+        self,
+        key: str,
+        tokens: Mapping[str, Any],
+        escape_tokens: bool,
+        trusted_tokens: set[str] | None = None,
+    ) -> str:
         message = self._templates[key]
+        trusted_tokens = trusted_tokens or set()
         safe_tokens = {
-            name: escape(str(value), quote=False) if escape_tokens else str(value)
+            name: str(value) if name in trusted_tokens or not escape_tokens else escape(str(value), quote=False)
             for name, value in tokens.items()
         }
         for name, value in safe_tokens.items():

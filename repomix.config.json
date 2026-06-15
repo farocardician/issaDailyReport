@@ -4,7 +4,7 @@
     "maxFileSize": 1000000
   },
   "output": {
-    "filePath": "repomix-output.xml",
+    "filePath": "repomix-output.md",
     "style": "markdown",
     "parsableStyle": false,
     "compress": false,

@@ -102,6 +102,64 @@ def none_reply_keyboard(label: str) -> ReplyKeyboardMarkup:
     )
 
 
+def sales_source_keyboard(
+    options: Sequence[tuple[str, str]],
+    selected_source_ids: set[str],
+    selected_prefix: str,
+    no_sales_label: str,
+    done_label: str | None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    source_buttons = [
+        InlineKeyboardButton(
+            f"{selected_prefix} {label}" if source_id in selected_source_ids else label,
+            callback_data=f"sales_source:toggle:{source_id}",
+        )
+        for source_id, label in options
+    ]
+
+    for index in range(0, len(source_buttons), 2):
+        rows.append(source_buttons[index : index + 2])
+
+    rows.append([InlineKeyboardButton(no_sales_label, callback_data="sales_source:no_sales")])
+    if done_label is not None:
+        rows.append([InlineKeyboardButton(done_label, callback_data="sales_source:done")])
+    return InlineKeyboardMarkup(rows)
+
+
+def sales_input_navigation_keyboard(previous_label: str, cancel_label: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[previous_label, cancel_label]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def sales_summary_keyboard(continue_label: str, edit_label: str, cancel_label: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [continue_label, edit_label],
+            [cancel_label],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def sales_edit_menu_keyboard(
+    sources: Sequence[tuple[str, str]],
+    edit_sources_label: str,
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(label, callback_data=f"sales_edit:source:{source_id}")]
+        for source_id, label in sources
+    ]
+    rows.append([InlineKeyboardButton(edit_sources_label, callback_data="sales_edit:sources")])
+    rows.append([InlineKeyboardButton(back_label, callback_data="sales_edit:back")])
+    return InlineKeyboardMarkup(rows)
+
+
 def stock_issue_keyboard(
     options: Sequence[tuple[str, str]],
     selected_option_ids: set[str],
