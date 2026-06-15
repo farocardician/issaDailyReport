@@ -1,6 +1,6 @@
 PRIVATE_CHAT_ONLY,Laporan hanya bisa dikirim melalui chat pribadi dengan bot ya.
-START,Halo 👋\n\nSaya akan bantu input laporan toko harian.\n\nTekan tombol <b>Bagikan Lokasi</b> di bawah ini supaya saya bisa cari toko terdekat.
-ASK_LOCATION,Silakan tekan tombol <b>Bagikan Lokasi</b> supaya saya bisa bantu cari toko terdekat.
+START,"Halo 👋\n\nSaya akan bantu input laporan toko harian.\n\nTekan tombol <b>Bagikan Lokasi</b> supaya saya bisa cari toko terdekat.\nKalau tidak bisa bagikan lokasi, tekan <b>Lewati</b> untuk pilih toko secara manual."
+ASK_LOCATION,"Silakan tekan tombol <b>Bagikan Lokasi</b> supaya saya bisa bantu cari toko terdekat.\n\nKalau tidak bisa bagikan lokasi, tekan <b>Lewati</b> untuk pilih toko secara manual."
 LOCATION_NOT_FOUND,Saya belum bisa memastikan toko dari lokasi ini.\n\nSilakan pilih toko secara manual.
 STORE_CONFIRMATION,Saya menemukan toko terdekat:\n\n<b>{{store_label}}</b>\n\nJarak kamu sekitar <b>{{distance_meter}}</b> dari toko.\n\nApakah benar ini toko yang mau dilaporkan?
 MULTIPLE_STORES_FOUND,Kamu sepertinya berada di area:\n\n<b>{{area_label}}</b>\n\nPilih toko yang mau dilaporkan:

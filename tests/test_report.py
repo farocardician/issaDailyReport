@@ -9,6 +9,7 @@ def test_location_status() -> None:
     assert location_status(99.9, 100) == "in_radius"
     assert location_status(100, 100) == "in_radius"
     assert location_status(100.1, 100) == "out_of_radius"
+    assert location_status(None, None) == "manual_store_selection"
 
 
 def test_generate_report_id_format() -> None:

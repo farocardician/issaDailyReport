@@ -11,6 +11,7 @@ from telegram.ext import ContextTypes
 from app.bot.keyboards import (
     confirm_store_keyboard,
     duplicate_keyboard,
+    manual_store_list_keyboard,
     none_reply_keyboard,
     share_location_keyboard,
     stock_issue_detail_keyboard,
@@ -148,6 +149,11 @@ class ReportFlow:
             await self._send(update, "UNKNOWN_COMMAND")
 
     async def _handle_location(self, update: Update, session: dict[str, Any]) -> None:
+        text = _message_text(update)
+        if text is not None and await self._is_skip_answer(text):
+            await self._show_manual_store_selection(update, session)
+            return
+
         if update.message is None or update.message.location is None:
             await self._send(update, "ASK_LOCATION", reply_markup=await self._share_location_keyboard())
             return
@@ -509,8 +515,12 @@ class ReportFlow:
     ) -> None:
         now = self._now()
         draft = dict(session["draft_report"])
-        distance = float(draft["distance_from_store_meter"])
-        effective_radius = int(draft["effective_radius_meter"])
+        distance = draft.get("distance_from_store_meter")
+        if distance is not None:
+            distance = float(distance)
+        effective_radius = draft.get("effective_radius_meter")
+        if effective_radius is not None:
+            effective_radius = int(effective_radius)
         report = {
             "report_id": await self._new_report_id(now),
             "report_date": now.date(),
@@ -523,8 +533,8 @@ class ReportFlow:
             "pieces_sold": draft["pieces_sold"],
             "no_buy_reason": draft["no_buy_reason"],
             "stock_issue": draft["stock_issue"],
-            "submitted_latitude": draft["submitted_latitude"],
-            "submitted_longitude": draft["submitted_longitude"],
+            "submitted_latitude": draft.get("submitted_latitude"),
+            "submitted_longitude": draft.get("submitted_longitude"),
             "distance_from_store_meter": distance,
             "note": draft["note"],
             "submission_status": submission_status,
@@ -553,7 +563,11 @@ class ReportFlow:
                 no_buy_reason=report["no_buy_reason"],
                 stock_issue=report["stock_issue"],
                 note=report["note"],
-                distance_meter=distance_meter(float(report["distance_from_store_meter"])),
+                distance_meter=(
+                    distance_meter(float(report["distance_from_store_meter"]))
+                    if report["distance_from_store_meter"] is not None
+                    else "-"
+                ),
                 location_status=report["location_status"],
             )
             await send_admin_notification(
@@ -564,27 +578,30 @@ class ReportFlow:
 
     async def _select_store(self, update: Update, session: dict[str, Any], store_id: str) -> None:
         store = await self._stores.get_by_id(store_id)
-        if (
-            store is None
-            or store.status != self._settings.active_status
-            or store.latitude is None
-            or store.longitude is None
-        ):
+        if store is None or store.status != self._settings.active_status:
             await self._send(update, "UNKNOWN_COMMAND")
             return
 
         draft = dict(session["draft_report"])
         candidate = draft.get("candidate_distances", {}).get(store_id)
+        has_submitted_location = "submitted_latitude" in draft and "submitted_longitude" in draft
         if candidate is None:
-            distance = haversine_meters(
-                draft["submitted_latitude"],
-                draft["submitted_longitude"],
-                store.latitude,
-                store.longitude,
-            )
-            effective_radius = store.allowed_radius_meter or self._settings.default_radius_meter
-            if effective_radius <= 0:
-                effective_radius = self._settings.default_radius_meter
+            if has_submitted_location:
+                if store.latitude is None or store.longitude is None:
+                    await self._send(update, "UNKNOWN_COMMAND")
+                    return
+                distance = haversine_meters(
+                    draft["submitted_latitude"],
+                    draft["submitted_longitude"],
+                    store.latitude,
+                    store.longitude,
+                )
+                effective_radius = store.allowed_radius_meter or self._settings.default_radius_meter
+                if effective_radius <= 0:
+                    effective_radius = self._settings.default_radius_meter
+            else:
+                distance = None
+                effective_radius = None
         else:
             distance = float(candidate["distance_meter"])
             effective_radius = int(candidate["effective_radius_meter"])
@@ -610,12 +627,18 @@ class ReportFlow:
 
     async def _show_manual_store_selection(self, update: Update, session: dict[str, Any]) -> None:
         draft = dict(session["draft_report"])
-        candidates = await self._all_active_candidates_from_draft(draft)
+        has_submitted_location = "submitted_latitude" in draft and "submitted_longitude" in draft
         await self._persist(update, Step.MANUAL_STORE_SELECTION, draft)
+        if has_submitted_location:
+            candidates = await self._all_active_candidates_from_draft(draft)
+            reply_markup = store_list_keyboard(candidates)
+        else:
+            stores = await self._stores.list_active(self._settings.active_status)
+            reply_markup = manual_store_list_keyboard(stores)
         await self._send(
             update,
             "MANUAL_STORE_SELECTION",
-            reply_markup=store_list_keyboard(candidates),
+            reply_markup=reply_markup,
         )
 
     async def _all_active_candidates_from_draft(self, draft: dict[str, Any]) -> list[StoreCandidate]:
@@ -744,7 +767,10 @@ class ReportFlow:
 
     async def _share_location_keyboard(self):
         await self._refresh_templates()
-        return share_location_keyboard(self._templates.render("BUTTON_SHARE_LOCATION"))
+        return share_location_keyboard(
+            self._templates.render("BUTTON_SHARE_LOCATION"),
+            self._templates.render("BUTTON_SKIP"),
+        )
 
     async def _confirm_store_keyboard(self):
         await self._refresh_templates()
@@ -877,6 +903,10 @@ class ReportFlow:
     async def _is_none_answer(self, text: str) -> bool:
         await self._refresh_templates()
         return text.strip().casefold() == self._templates.render("BUTTON_NONE").casefold()
+
+    async def _is_skip_answer(self, text: str) -> bool:
+        await self._refresh_templates()
+        return text.strip().casefold() == self._templates.render("BUTTON_SKIP").casefold()
 
     async def _ensure_private(self, update: Update) -> bool:
         if update.effective_chat.type == ChatType.PRIVATE:

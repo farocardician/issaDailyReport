@@ -11,7 +11,9 @@ def generate_report_id(now: datetime) -> str:
     return f"RPT-{now:%Y%m%d-%H%M%S}-{_RANDOM.randint(0, 9999):04d}"
 
 
-def location_status(distance: float, effective_radius: int) -> str:
+def location_status(distance: float | None, effective_radius: int | None) -> str:
+    if distance is None or effective_radius is None:
+        return "manual_store_selection"
     return "in_radius" if distance <= effective_radius else "out_of_radius"
 
 

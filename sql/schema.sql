@@ -36,12 +36,12 @@ CREATE TABLE IF NOT EXISTS daily_reports (
     pieces_sold integer NOT NULL,
     no_buy_reason text NOT NULL,
     stock_issue text NOT NULL,
-    submitted_latitude double precision NOT NULL,
-    submitted_longitude double precision NOT NULL,
-    distance_from_store_meter numeric NOT NULL,
+    submitted_latitude double precision,
+    submitted_longitude double precision,
+    distance_from_store_meter numeric,
     note text NOT NULL,
     submission_status text NOT NULL CHECK (submission_status IN ('submitted', 'correction')),
-    location_status text NOT NULL CHECK (location_status IN ('in_radius', 'out_of_radius')),
+    location_status text NOT NULL CHECK (location_status IN ('in_radius', 'out_of_radius', 'manual_store_selection')),
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
