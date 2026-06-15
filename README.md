@@ -37,7 +37,7 @@ From the SPG's point of view, submitting a report looks like this:
    - No match → choose the store manually.
 3. **Enter PIN** — identifies the staff member.
 4. **Input sales by source** — choose sales sources such as Outlet, Whatsapp, Shopee, Tokopedia, Tiktok, or Website, then enter GMV, orders, pieces, and traffic where required.
-5. **Stock issues & note** — pick any stock problems (and the affected SKUs), or tap **Tidak Ada**, then add an optional note.
+5. **Stock issues & note** — pick any stock problems, type the affected SKUs for each selected issue, or tap **Tidak Ada**, then add an optional note. On a SKU prompt, type **Tidak Ada** or `-` when there is no specific SKU.
 6. **Review & submit** — the bot shows a summary; the SPG confirms.
 7. **Admin notified** — a formatted summary is sent to the admin chat.
 
@@ -168,7 +168,7 @@ Column reference:
 3. Confirm or choose the store.
 4. Enter PIN `123123` (the seeded test PIN).
 5. Choose sales sources and fill in each requested value.
-6. Pick any stock issues (and affected SKUs), or tap **Tidak Ada**, then add a note.
+6. Pick any stock issues, type affected SKUs for each issue, or tap **Tidak Ada**. On a SKU prompt, type **Tidak Ada** or `-` if there is no specific SKU, then add a note.
 7. Submit.
 
 Submitting again for the **same store and date** creates a second report with `submission_status = correction`.

@@ -103,6 +103,7 @@ def test_stock_issue_continue_starts_first_selected_detail_in_db_order() -> None
     assert "STOCK_ISSUE_DETAIL_PROMPT Warna Habis" in chat.sent_messages[-1]["text"]
     assert "Kendala 1/2 · Warna Habis" in chat.sent_messages[-1]["text"]
     assert "<b>SKU</b>" in chat.sent_messages[-1]["text"]
+    assert "<b>Tidak Ada</b>" in chat.sent_messages[-1]["text"]
     assert "&lt;b&gt;" not in chat.sent_messages[-1]["text"]
     assert chat.sent_messages[-1]["parse_mode"] == ParseMode.HTML
     assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [
@@ -140,6 +141,23 @@ def test_stock_issue_multiple_details_save_multiline_value_then_note_step() -> N
 
     assert sessions.session["current_step"] == Step.ASK_NOTE.value
     assert sessions.session["draft_report"]["stock_issue"] == "Size Habis: SKU-001, SKU-002\nWarna Habis: SKU-003"
+    assert "ASK_NOTE" in chat.sent_messages[-1]["text"]
+
+
+def test_stock_issue_detail_dash_skips_current_issue() -> None:
+    draft = {
+        "stock_issue_ids": ["size_empty"],
+        "stock_issue_labels": {"size_empty": "Size Habis"},
+        "stock_issue_detail_option_ids": ["size_empty"],
+        "stock_issue_detail_option_id": "size_empty",
+        "stock_issue_sku_details": {},
+    }
+    flow, chat, sessions = _flow([_stock_issue("size_empty", "Size Habis", 1)], draft=draft)
+
+    asyncio.run(flow.handle_message(_text_update(chat, "-"), SimpleNamespace()))
+
+    assert sessions.session["current_step"] == Step.ASK_NOTE.value
+    assert sessions.session["draft_report"]["stock_issue"] == "Size Habis: -"
     assert "ASK_NOTE" in chat.sent_messages[-1]["text"]
 
 
@@ -227,6 +245,23 @@ def test_stock_issue_detail_cancel_cancels_session() -> None:
     assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [[{"text": "Mulai"}]]
 
 
+def test_stock_issue_detail_non_text_reprompts_detail_not_picker() -> None:
+    draft = {
+        "stock_issue_ids": ["size_empty"],
+        "stock_issue_labels": {"size_empty": "Size Habis"},
+        "stock_issue_detail_option_ids": ["size_empty"],
+        "stock_issue_detail_option_id": "size_empty",
+        "stock_issue_sku_details": {},
+    }
+    flow, chat, sessions = _flow([_stock_issue("size_empty", "Size Habis", 1)], draft=draft)
+
+    asyncio.run(flow.handle_message(_non_text_update(chat), SimpleNamespace()))
+
+    assert sessions.session["current_step"] == Step.ASK_STOCK_ISSUE.value
+    assert "STOCK_ISSUE_DETAIL_PROMPT Size Habis" in chat.sent_messages[-1]["text"]
+    assert "ASK_STOCK_ISSUE" not in chat.sent_messages[-1]["text"]
+
+
 def test_stock_issue_none_goes_to_note_with_dash() -> None:
     flow, chat, sessions = _flow([_stock_issue("size_empty", "Size Habis", 1)])
 
@@ -288,7 +323,7 @@ def _templates() -> dict[str, str]:
         "STOCK_ISSUE_SKU_EMPTY": "Belum ada SKU yang diinput.",
         "STOCK_ISSUE_SKU_HEADER": "SKU yang sudah diinput:",
         "STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION": "Ketik <b>SKU</b> yang terdampak. Kalau ada beberapa SKU, pisahkan dengan koma.",
-        "STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION": "Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU.",
+        "STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION": "Ketik <b>Tidak Ada</b> atau <b>-</b> kalau tidak ada SKU khusus.",
         "STOCK_ISSUE_DETAIL_EMPTY_VALUE": "-",
         "STOCK_ISSUE_DETAIL_LINE": "{{issue}}: {{sku_list}}",
         "SELECTED_PREFIX": "✓",
@@ -296,11 +331,7 @@ def _templates() -> dict[str, str]:
         "BUTTON_START": "Mulai",
         "BUTTON_CANCEL": "Batal",
         "BUTTON_PREVIOUS": "Sebelumnya",
-        "BUTTON_SKIP_SKU": "Lewati SKU",
         "BUTTON_STOCK_ISSUE_NEXT": "Lanjut input {{issue}}",
-        "BUTTON_CONTINUE_TO_NEXT_ISSUE": "Lanjut ke {{next_issue_label}}",
-        "BUTTON_CONTINUE_TO_NEXT_PHASE": "Lanjut ke {{next_phase_label}}",
-        "NEXT_PHASE_NOTE_LABEL": "Catatan",
         "PROGRESS_MAIN_LABEL": "Langkah",
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "CONTEXTUAL_STEP_FORMAT": "{{label}} {{current}}/{{total}} · {{title}}",
@@ -333,6 +364,10 @@ def _button_texts(message: dict[str, Any]) -> list[str]:
 
 def _text_update(chat: "_FakeChat", text: str) -> "_FakeUpdate":
     return _FakeUpdate(chat=chat, message=SimpleNamespace(text=text, location=None), callback_query=None)
+
+
+def _non_text_update(chat: "_FakeChat") -> "_FakeUpdate":
+    return _FakeUpdate(chat=chat, message=SimpleNamespace(text=None, location=None), callback_query=None)
 
 
 def _callback_update(chat: "_FakeChat", data: str) -> "_FakeUpdate":

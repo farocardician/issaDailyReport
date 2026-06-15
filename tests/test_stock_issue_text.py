@@ -1,7 +1,5 @@
 from app.bot.stock_issue_text import (
-    continue_button_label,
     detail_instruction_text,
-    has_current_sku_values,
     merge_sku_values,
     next_detail_option_id,
     parse_sku_values,
@@ -19,10 +17,8 @@ def _templates() -> MessageTemplates:
             "STOCK_ISSUE_SELECTED_HEADER": "Dipilih:",
             "STOCK_ISSUE_SKU_EMPTY": "Belum ada SKU yang diinput.",
             "STOCK_ISSUE_SKU_HEADER": "SKU yang sudah diinput:",
-            "BUTTON_CONTINUE_TO_NEXT_ISSUE": "Lanjut ke {{next_issue_label}}",
-            "BUTTON_CONTINUE_TO_NEXT_PHASE": "Lanjut ke {{next_phase_label}}",
             "STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION": "Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma.",
-            "STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION": "Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU.",
+            "STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION": "Ketik <b>Tidak Ada</b> atau <b>-</b> kalau tidak ada SKU khusus.",
         }
     )
 
@@ -90,22 +86,8 @@ def test_dynamic_detail_count_follows_selected_issue_count() -> None:
     assert next_detail_option_id(selected_issue_ids, "stock_empty") is None
 
 
-def test_continue_button_points_to_next_selected_issue_when_available() -> None:
-    assert continue_button_label(_templates(), "Warna Habis", "Catatan") == "Lanjut ke Warna Habis"
-
-
-def test_continue_button_points_to_next_phase_for_last_issue() -> None:
-    assert continue_button_label(_templates(), None, "Catatan") == "Lanjut ke Catatan"
-
-
-def test_skip_instruction_appears_only_when_skip_button_visible() -> None:
-    assert detail_instruction_text(_templates(), True) == (
+def test_detail_instruction_includes_sku_and_skip_guidance() -> None:
+    assert detail_instruction_text(_templates()) == (
         "Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma.\n"
-        "Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU."
+        "Ketik <b>Tidak Ada</b> atau <b>-</b> kalau tidak ada SKU khusus."
     )
-    assert detail_instruction_text(_templates(), False) == "Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma."
-
-
-def test_sku_presence_controls_skip_visibility() -> None:
-    assert not has_current_sku_values({"stock_issue_sku_details": {"size_empty": []}}, "size_empty")
-    assert has_current_sku_values({"stock_issue_sku_details": {"size_empty": ["SKU-001"]}}, "size_empty")

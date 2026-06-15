@@ -486,11 +486,14 @@ class ReportFlow:
 
     async def _handle_stock_issue_text(self, update: Update, session: dict[str, Any]) -> None:
         text = _message_text(update)
+        draft = dict(session["draft_report"])
         if text is None:
-            await self._send_stock_issue_prompt(update, dict(session["draft_report"]))
+            if draft.get("stock_issue_detail_option_id"):
+                await self._send_stock_issue_detail_prompt(update, draft)
+                return
+            await self._send_stock_issue_prompt(update, draft)
             return
 
-        draft = dict(session["draft_report"])
         if draft.get("stock_issue_detail_option_id"):
             text = text.strip()
             if await self._is_previous_answer(text):
@@ -499,7 +502,7 @@ class ReportFlow:
             if await self._is_cancel_answer(text):
                 await self._cancel(update)
                 return
-            if await self._is_none_answer(text):
+            if text == "-" or await self._is_none_answer(text):
                 await self._advance_stock_issue_detail(update, session, draft)
                 return
             await self._append_stock_issue_skus(update, session, draft, text)
@@ -509,23 +512,6 @@ class ReportFlow:
 
     async def _handle_stock_issue_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
         draft = dict(session["draft_report"])
-
-        if data == "stock_issue:detail_continue":
-            await self._advance_stock_issue_detail(update, session, draft)
-            return
-
-        if data == "stock_issue:detail_previous":
-            await self._handle_stock_issue_detail_previous(update, session, draft)
-            return
-
-        if data == "stock_issue:detail_skip":
-            current_option_id = draft.get("stock_issue_detail_option_id")
-            if current_option_id:
-                details = dict(draft.get("stock_issue_sku_details", {}))
-                details[current_option_id] = []
-                draft["stock_issue_sku_details"] = details
-            await self._advance_stock_issue_detail(update, session, draft)
-            return
 
         if data.startswith("stock_issue:toggle:"):
             option_id = data.removeprefix("stock_issue:toggle:")
@@ -1257,7 +1243,7 @@ class ReportFlow:
             issue=await self._stock_issue_option_label(draft, draft["stock_issue_detail_option_id"]),
             detail_progress=await self._stock_issue_detail_progress(draft),
             sku_list=await self._stock_issue_sku_text(draft),
-            instructions=await self._stock_issue_detail_instruction_text(draft),
+            instructions=await self._stock_issue_detail_instruction_text(),
             reply_markup=await self._sales_input_navigation_keyboard(),
             progress_step=Step.ASK_STOCK_ISSUE,
         )
@@ -1479,9 +1465,9 @@ class ReportFlow:
             await self._stock_issue_detail_title(draft, current_option_id),
         )
 
-    async def _stock_issue_detail_instruction_text(self, draft: dict[str, Any]) -> str:
+    async def _stock_issue_detail_instruction_text(self) -> str:
         await self._refresh_templates()
-        return detail_instruction_text(self._templates, False)
+        return detail_instruction_text(self._templates)
 
     async def _active_stock_issues(self) -> list[StockIssue]:
         return await self._stock_issues.list_active(self._settings.active_status)
