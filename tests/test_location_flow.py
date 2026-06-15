@@ -45,7 +45,7 @@ def test_retry_location_during_manual_selection_re_runs_store_matching() -> None
     assert all("UNKNOWN_COMMAND" not in message["text"] for message in chat.sent_messages)
 
 
-def test_retry_location_not_found_keyboard_only_shows_share_location() -> None:
+def test_location_not_found_sends_one_manual_store_selection_message() -> None:
     flow, chat, sessions = _flow_with_stores(
         [
             _store("S001", latitude=-6.2, longitude=106.8, allowed_radius_meter=10),
@@ -56,12 +56,11 @@ def test_retry_location_not_found_keyboard_only_shows_share_location() -> None:
     asyncio.run(flow.handle_message(update, SimpleNamespace()))
 
     assert sessions.upserts[-1]["current_step"] == Step.MANUAL_STORE_SELECTION
-    assert len(chat.sent_messages) == 2
+    assert len(chat.sent_messages) == 1
     assert "LOCATION_NOT_FOUND" in chat.sent_messages[0]["text"]
-    assert chat.sent_messages[0]["reply_markup"].to_dict()["keyboard"] == [
-        [{"request_location": True, "text": "Bagikan Lokasi"}]
+    assert chat.sent_messages[0]["reply_markup"].to_dict()["inline_keyboard"] == [
+        [{"callback_data": "store:S001", "text": "VIZU - Mall Utama, Jakarta"}]
     ]
-    assert "MANUAL_STORE_SELECTION" in chat.sent_messages[1]["text"]
     assert all("UNKNOWN_COMMAND" not in message["text"] for message in chat.sent_messages)
 
 

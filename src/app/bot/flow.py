@@ -269,19 +269,15 @@ class ReportFlow:
             return
 
         await self._persist(update, Step.MANUAL_STORE_SELECTION, draft)
+        reply_markup = manual_store_list_keyboard(
+            [candidate.store for candidate in match.candidates],
+            await self._store_labels([candidate.store for candidate in match.candidates]),
+        )
         await self._send(
             update,
             "LOCATION_NOT_FOUND",
-            reply_markup=await self._retry_location_keyboard(),
+            reply_markup=reply_markup,
             progress_step=Step.MANUAL_STORE_SELECTION,
-        )
-        await self._show_manual_store_selection(
-            update,
-            {
-                **session,
-                "current_step": Step.MANUAL_STORE_SELECTION.value,
-                "draft_report": draft,
-            },
         )
 
     async def _handle_pin(self, update: Update, session: dict[str, Any]) -> None:
