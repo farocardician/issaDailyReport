@@ -103,6 +103,7 @@ def _templates() -> dict[str, str]:
         "LOCATION_NOT_FOUND": "{{progress}}\nLOCATION_NOT_FOUND",
         "MANUAL_STORE_SELECTION": "{{progress}}\nMANUAL_STORE_SELECTION",
         "BUTTON_SHARE_LOCATION": "Bagikan Lokasi",
+        "BUTTON_START": "Mulai",
         "BUTTON_SELECT_STORE_MANUAL": "Pilih Toko Manual",
         "BUTTON_CONFIRM_YES": "Ya",
         "BUTTON_OTHER_STORE": "Pilih toko lain",

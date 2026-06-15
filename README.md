@@ -36,11 +36,11 @@ From the SPG's point of view, submitting a report looks like this:
    - Several matches → pick from a list.
    - No match → choose the store manually.
 3. **Enter PIN** — identifies the staff member.
-4. **Answer the questions** — traffic, offline GMV, online GMV, orders, pieces sold, stock issues, and a note. Some questions are skipped automatically (e.g. if traffic or total GMV is zero).
+4. **Input sales by source** — choose sales sources such as Outlet, Whatsapp, Shopee, Tokopedia, Tiktok, or Website, then enter GMV, orders, pieces, and traffic where required.
 5. **Review & submit** — the bot shows a summary; the SPG confirms.
 6. **Admin notified** — a formatted summary is sent to the admin chat.
 
-Submitting a report for a store/date that already has one is allowed: it is saved as a **correction** rather than overwriting the original.
+Submitting a report for a store/date that already has one is allowed: it is saved as a **correction** rather than overwriting the original. If the SPG cancels, the bot shows a **Mulai** button to start again.
 
 ---
 
@@ -63,7 +63,7 @@ cp .env.example .env
 # 2. Build and start the stack (database + bot + tunnel)
 make up
 
-# 3. Seed stores, users, and UI text
+# 3. Seed stores, users, sales sources, and UI text
 make seed
 ```
 
@@ -107,7 +107,7 @@ Copy `.env.example` to `.env` and fill in the values below.
 | Command | What it does |
 | --- | --- |
 | `make up` | Build and start the full stack (`db`, `bot`, `cloudflared`). |
-| `make seed` | Load stores, users, and UI text from `Reference/*.csv`. **Overwrites** live edits to `ui_translate`. |
+| `make seed` | Load stores, users, sales sources, and UI text from `Reference/*.csv`. **Overwrites** live edits to seeded copy/config. |
 | `make test` | Run the test suite in a throwaway container. |
 | `make set-webhook` | Register the webhook URL with Telegram (the bot also does this on boot in webhook mode). |
 | `make repomix` | Generate the `repomix-output.xml` AI handoff bundle. |
@@ -142,7 +142,7 @@ In `webhook` mode, Telegram needs a public HTTPS URL. A Cloudflare named tunnel 
 
 ## Editing the bot's text (`ui_translate`)
 
-All of the bot's wording — prompts, button labels, store/area/distance formats, stock-issue labels, location-status labels, and admin notifications — lives in the **`ui_translate`** database table (seeded from `Reference/ui_translate.csv`). This means copy can be changed without touching code.
+All fixed bot wording — prompts, button labels, store/area/distance formats, stock-issue labels, location-status labels, and admin notifications — lives in the **`ui_translate`** database table (seeded from `Reference/ui_translate.csv`). Sales source labels live in **`gmv_sources`** (seeded from `Reference/gmv_sources.csv`).
 
 After seeding, edit the text directly in the `ui_translate` table with any database client. Running `make seed` again restores the values from the CSV.
 
@@ -166,7 +166,7 @@ Column reference:
 2. Share your location.
 3. Confirm or choose the store.
 4. Enter PIN `123123` (the seeded test PIN).
-5. Fill in each report field.
+5. Choose sales sources and fill in each requested value.
 6. Submit.
 
 Submitting again for the **same store and date** creates a second report with `submission_status = correction`.
@@ -211,6 +211,9 @@ SELECT report_id, store_id, report_date, submission_status, location_status, dis
 FROM daily_reports
 ORDER BY created_at DESC;
 
+SELECT * FROM daily_report_sales
+ORDER BY report_id, sort_order;
+
 SELECT current_step FROM bot_sessions;
 ```
 
@@ -237,7 +240,7 @@ This uses `repomix.config.json` and writes `repomix-output.xml` (ignored by git)
 | `src/app/bot/flow.py` | Wires Telegram updates, business decisions, the database, and replies together. |
 | `src/app/bot/` | Telegram handlers, keyboards, progress indicators, and notifications. |
 | `sql/schema.sql` | Database schema, applied idempotently on startup and during seeding. |
-| `Reference/*.csv` | Seed inputs (stores, users, UI text). The app never writes back to these. |
+| `Reference/*.csv` | Seed inputs (stores, users, sales sources, UI text). The app never writes back to these. |
 | `tests/` | Unit tests for the domain logic and UI helpers. |
 
 For the full architecture, the report state machine, and contribution rules, see [`CLAUDE.md`](./CLAUDE.md).

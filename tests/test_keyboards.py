@@ -4,6 +4,7 @@ from app.bot.keyboards import (
     sales_input_navigation_keyboard,
     sales_source_keyboard,
     sales_summary_keyboard,
+    start_again_keyboard,
     start_location_keyboard,
     stock_issue_detail_keyboard,
 )
@@ -24,6 +25,12 @@ def test_retry_location_keyboard_only_shows_share_location() -> None:
 
     assert keyboard["keyboard"] == [[{"request_location": True, "text": "Bagikan Lokasi"}]]
     assert all(button["text"] != "Lewati" for row in keyboard["keyboard"] for button in row)
+
+
+def test_start_again_keyboard() -> None:
+    keyboard = start_again_keyboard("Mulai").to_dict()
+
+    assert keyboard["keyboard"] == [[{"text": "Mulai"}]]
 
 
 def test_stock_issue_detail_keyboard_uses_context_continue_not_done() -> None:
@@ -78,7 +85,6 @@ def test_sales_source_keyboard_shows_dynamic_next_when_selected() -> None:
             {"callback_data": "sales_source:toggle:shopee", "text": "✓ Shopee"},
         ],
         [{"callback_data": "sales_source:toggle:tokopedia", "text": "Tokopedia"}],
-        [{"callback_data": "sales_source:no_sales", "text": "Tidak Ada Penjualan"}],
         [{"callback_data": "sales_source:done", "text": "Lanjut input Shopee"}],
     ]
 

@@ -18,6 +18,7 @@ from app.bot.keyboards import (
     sales_input_navigation_keyboard,
     sales_source_keyboard,
     sales_summary_keyboard,
+    start_again_keyboard,
     stock_issue_detail_keyboard,
     stock_issue_keyboard,
     start_location_keyboard,
@@ -127,6 +128,11 @@ class ReportFlow:
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._ensure_private(update):
+            return
+
+        text = _message_text(update)
+        if text is not None and await self._is_start_answer(text):
+            await self.handle_start(update, context)
             return
 
         session = await self._load_session_or_notify(update)
@@ -1089,7 +1095,7 @@ class ReportFlow:
 
     async def _cancel(self, update: Update) -> None:
         await self._sessions.delete(update.effective_chat.id)
-        await self._send(update, "CANCELLED", reply_markup=ReplyKeyboardRemove())
+        await self._send(update, "CANCELLED", reply_markup=await self._start_again_keyboard())
 
     async def _persist(
         self,
@@ -1272,6 +1278,10 @@ class ReportFlow:
         return retry_location_keyboard(
             self._templates.render("BUTTON_SHARE_LOCATION"),
         )
+
+    async def _start_again_keyboard(self):
+        await self._refresh_templates()
+        return start_again_keyboard(self._templates.render("BUTTON_START"))
 
     async def _confirm_store_keyboard(self):
         await self._refresh_templates()
@@ -1474,6 +1484,10 @@ class ReportFlow:
     async def _is_cancel_answer(self, text: str) -> bool:
         await self._refresh_templates()
         return text.strip().casefold() == self._templates.render("BUTTON_CANCEL").casefold()
+
+    async def _is_start_answer(self, text: str) -> bool:
+        await self._refresh_templates()
+        return text.strip().casefold() == self._templates.render("BUTTON_START").casefold()
 
     async def _is_manual_store_answer(self, text: str) -> bool:
         await self._refresh_templates()

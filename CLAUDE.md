@@ -11,7 +11,7 @@ Dockerized Python 3.12 Telegram bot for daily per-store SPG (Sales Promotion) re
 Everything runs inside Docker Compose — there is no local virtualenv workflow. The `bot` image sets `PYTHONPATH=/app/src`, so imports are `app.*`.
 
 - `make up` — build and start the stack (`db`, `bot`, `cloudflared`).
-- `make seed` — seed `stores`, `users`, and `ui_translate` from `Reference/*.csv` (idempotent upserts; **overwrites** any live edits to `ui_translate`).
+- `make seed` — seed `stores`, `users`, `gmv_sources`, and `ui_translate` from `Reference/*.csv` (idempotent upserts; **overwrites** live edits to seeded tables/copy).
 - `make test` — run the full pytest suite in a one-off container.
 - `make set-webhook` — register `WEBHOOK_BASE_URL + WEBHOOK_PATH` with Telegram (the bot also does this on boot in webhook mode).
 - `make repomix` — generate `repomix-output.xml` AI handoff bundle.
@@ -28,7 +28,7 @@ The codebase enforces a one-directional dependency flow. **Respect these boundar
 - `src/app/repositories/` — **SQL access only** (asyncpg). One class per table: `sessions`, `users`, `stores`, `reports`, `templates`.
 - `src/app/bot/flow.py` — the **orchestrator** (`ReportFlow`). It is the only place that wires Telegram updates → domain decisions → repositories → replies. Handlers (`handlers.py`) are thin and delegate to `flow` via `application.bot_data["flow"]`.
 - `src/app/bot/` also holds presentation helpers: `keyboards`, `notifications`, `progress`, `stock_issue_text`, plus `application.py` (DI wiring in `post_init`).
-- `src/app/templates.py` — `MessageTemplates` renderer (`{{token}}` substitution). `render()` HTML-escapes tokens; `render_plain()` does not — use `render_plain` only for values re-embedded into another template.
+- `src/app/templates.py` — `MessageTemplates` renderer (`{{token}}` substitution). `render()` HTML-escapes tokens; `render_plain()` does not; `render_trusted()` is only for internally generated HTML tokens such as `sales_breakdown`.
 - `src/app/config.py` (`Settings` via pydantic-settings, from `.env`), `db.py` (pool + schema bootstrap), `main.py` (entrypoint: webhook or polling).
 
 When adding behavior, decide which layer owns it: **state transitions belong in `domain/session_state.py`, not in `flow.py`.** Flow only reacts to the step the domain returns.
@@ -41,8 +41,8 @@ Happy path:
 `START → AWAITING_LOCATION → (CONFIRM_STORE | CHOOSE_STORE | MANUAL_STORE_SELECTION) → AWAITING_PIN → ASK_SALES_SOURCES → ASK_SALES_INPUT → REVIEW_SALES_SUMMARY → ASK_STOCK_ISSUE → ASK_NOTE → REVIEW_SUMMARY → (CONFIRM_DUPLICATE?) → DONE`
 
 The **sales sub-flow** (steps 3 of 5, "Sumber Penjualan") replaces the old fixed traffic/GMV numeric questions:
-- `ASK_SALES_SOURCES` — inline multi-select of configurable sources from the `gmv_sources` table (Outlet, Whatsapp, Shopee, …). "Tidak Ada Penjualan" is a fixed action button (not a `gmv_sources` row): it writes no sales rows, sets `draft["sales_no_sales"]`, and skips straight to `ASK_STOCK_ISSUE`.
-- `ASK_SALES_INPUT` — one step that loops `(source, field)` per `domain.sales_sources.input_plan`. A source with `requires_traffic` asks traffic + GMV + order + pieces; others ask GMV + order + pieces. Position tracked by `draft["sales_input_plan"]` / `sales_input_pos`.
+- `ASK_SALES_SOURCES` — inline multi-select of configurable sources from `gmv_sources`. When nothing is selected it shows `Tidak Ada Penjualan`; after a source is selected that button is hidden and the continue button becomes `Lanjut input {{source}}`.
+- `ASK_SALES_INPUT` — one step that loops `(source, field)` per `domain.sales_sources.input_plan`. A source with `requires_traffic` asks traffic + GMV + order + pieces; others ask GMV + order + pieces. Position is tracked by `draft["sales_input_plan"]` / `sales_input_pos`; buttons are `Sebelumnya` and `Batal`.
 - `REVIEW_SALES_SUMMARY` — reply-keyboard summary (Lanjutkan / Ubah / Batal). `Ubah` opens `EDIT_SALES_MENU`: edit one source's fields, or "Tambah / Hapus Sumber Penjualan" (re-opens the picker preselected, collecting input only for newly-added sources).
 
 Per-source values live in `draft["sales_data"]` (`{source_id: {label, source_type, requires_traffic, sort_order, traffic?, gmv, order_count, pieces_sold}}`). On submit, each becomes a `daily_report_sales` row with the label/type/flags **snapshotted**; totals are always computed from rows via `domain.sales_sources.sales_totals` (no aggregate columns on `daily_reports`).
@@ -51,7 +51,7 @@ Store matching (`domain/store_matching.py`): haversine distance vs. an *effectiv
 
 The **stock-issue sub-flow** is the most intricate part of `flow.py`: it stays on `ASK_STOCK_ISSUE` while toggling multi-select issue categories, collecting free-text "other" issues, then walking per-category SKU detail prompts. State for this lives entirely in `draft_report` keys (`stock_issue_option_ids`, `stock_issue_sku_details`, `stock_issue_detail_option_id`, …) and is stripped out by `_save_stock_issue_and_continue` before advancing.
 
-Duplicate handling: re-submitting the same `store_id` + `report_date` routes to `CONFIRM_DUPLICATE`; confirming writes a **second** `daily_reports` row with `submission_status = 'correction'` (vs. `'submitted'`). Report IDs are `RPT-YYYYMMDD-HHMMSS-NNNN`, regenerated up to 10× on collision.
+Duplicate handling: re-submitting the same `store_id` + `report_date` routes to `CONFIRM_DUPLICATE`; confirming writes a **second** `daily_reports` row with `submission_status = 'correction'` (vs. `'submitted'`). Cancelled sessions show a `Mulai` button to restart. Report IDs are `RPT-YYYYMMDD-HHMMSS-NNNN`, regenerated up to 10× on collision.
 
 ## UI text: the `ui_translate` table
 

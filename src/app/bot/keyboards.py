@@ -26,6 +26,15 @@ def retry_location_keyboard(location_label: str) -> ReplyKeyboardMarkup:
     )
 
 
+def start_again_keyboard(start_label: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[start_label]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+        input_field_placeholder=start_label,
+    )
+
+
 def confirm_store_keyboard(yes_label: str, other_store_label: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
@@ -121,7 +130,8 @@ def sales_source_keyboard(
     for index in range(0, len(source_buttons), 2):
         rows.append(source_buttons[index : index + 2])
 
-    rows.append([InlineKeyboardButton(no_sales_label, callback_data="sales_source:no_sales")])
+    if not selected_source_ids:
+        rows.append([InlineKeyboardButton(no_sales_label, callback_data="sales_source:no_sales")])
     if done_label is not None:
         rows.append([InlineKeyboardButton(done_label, callback_data="sales_source:done")])
     return InlineKeyboardMarkup(rows)

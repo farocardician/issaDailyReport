@@ -110,6 +110,7 @@ def test_sales_input_cancel_cancels_session() -> None:
     asyncio.run(flow.handle_message(_text_update(chat, "Batal"), SimpleNamespace()))
 
     assert sessions.deleted_chat_ids == [chat.id]
+    assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [[{"text": "Mulai"}]]
 
 
 def test_sales_summary_text_routing() -> None:
@@ -126,6 +127,7 @@ def test_sales_summary_text_routing() -> None:
     flow, chat, sessions, _reports, _bot = _flow(Step.REVIEW_SALES_SUMMARY, draft)
     asyncio.run(flow.handle_message(_text_update(chat, "Batal"), SimpleNamespace()))
     assert sessions.deleted_chat_ids == [chat.id]
+    assert chat.sent_messages[-1]["reply_markup"].to_dict()["keyboard"] == [[{"text": "Mulai"}]]
 
 
 def test_edit_one_source_then_add_and_remove_sources() -> None:
@@ -260,6 +262,7 @@ def _templates() -> dict[str, str]:
         "ADMIN_NOTIFICATION": "ADMIN {{store_label}} {{user_name}} {{sales_breakdown}} Total GMV: {{total_gmv}} {{location_status}}",
         "ADMIN_NOTIFICATION_CORRECTION": "ADMIN CORRECTION {{store_label}} {{user_name}} {{sales_breakdown}} Total GMV: {{total_gmv}} {{location_status}}",
         "BUTTON_NONE": "Tidak Ada",
+        "BUTTON_START": "Mulai",
         "BUTTON_NO_SALES": "Tidak Ada Penjualan",
         "BUTTON_PREVIOUS": "Sebelumnya",
         "BUTTON_SALES_INPUT_NEXT": "Lanjut input {{source}}",

@@ -18,11 +18,12 @@ ASK_NOTE,"{{progress}}\n\nCatatan tambahan?\n\nKetik catatan, atau tekan <b>Tida
 SALES_SUMMARY,"{{progress}}\n\nRingkasan penjualan:\n\n{{sales_breakdown}}\n\nTotal GMV: {{total_gmv}}\nTotal Order: {{total_order}}\nTotal Pieces: {{total_pieces}}\n\nLanjutkan, ubah, atau batalkan laporan?"
 REPORT_SUMMARY,{{progress}}\n\nBerikut ringkasan laporan:\n\n<b>{{store_label}}</b>\n\nPenjualan:\n{{sales_breakdown}}\n\nTotal GMV: {{total_gmv}}\nTotal Order: {{total_order}}\nTotal Pieces: {{total_pieces}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nSubmit laporan ini?
 SUBMIT_SUCCESS,Laporan berhasil dikirim. Terima kasih 🙏
-CANCELLED,"Baik, proses dibatalkan."
+CANCELLED,"Baik, proses dibatalkan.\n\nTekan <b>Mulai</b> untuk mulai laporan baru."
 UNKNOWN_COMMAND,Saya belum mengerti pesan ini.\n\nKetik /start untuk mulai laporan.
 SYSTEM_ERROR,"Maaf, sedang ada kendala sistem.\n\nSilakan coba lagi atau hubungi admin."
 SESSION_EXPIRED,Sesi sudah kedaluwarsa. Silakan kirim /start untuk mulai lagi.
 BUTTON_SHARE_LOCATION,Bagikan Lokasi
+BUTTON_START,Mulai
 BUTTON_SELECT_STORE_MANUAL,Pilih Toko Manual
 BUTTON_CONFIRM_YES,Ya
 BUTTON_OTHER_STORE,Pilih toko lain
