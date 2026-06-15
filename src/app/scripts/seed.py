@@ -19,6 +19,19 @@ DEPRECATED_UI_TRANSLATE_KEYS = (
     "PROGRESS_PHASE_GMV_ONLINE",
     "PROGRESS_PHASE_ORDER_PIECES",
     "BUTTON_SALES_DONE",
+    "STOCK_ISSUE_OPTION_SIZE_EMPTY",
+    "STOCK_ISSUE_OPTION_COLOR_EMPTY",
+    "STOCK_ISSUE_OPTION_NOT_ARRIVED",
+    "STOCK_ISSUE_OPTION_STOCK_EMPTY",
+    "STOCK_ISSUE_DETAIL_TITLE_SIZE_EMPTY",
+    "STOCK_ISSUE_DETAIL_TITLE_COLOR_EMPTY",
+    "STOCK_ISSUE_DETAIL_TITLE_NOT_ARRIVED",
+    "STOCK_ISSUE_DETAIL_TITLE_STOCK_EMPTY",
+    "STOCK_ISSUE_CUSTOM_PROMPT",
+    "STOCK_ISSUE_CUSTOM_LABEL",
+    "BUTTON_STOCK_ISSUE_OTHER",
+    "BUTTON_DONE",
+    "PROGRESS_PHASE_ISSUE_NOTE",
     "PROGRESS_SUBSTEP_LABEL",
     "PROGRESS_SUBSTEP_FORMAT",
     "PROGRESS_WITH_SUBSTEP_FORMAT",
@@ -36,6 +49,7 @@ async def main() -> None:
         await seed_stores(pool)
         await seed_users(pool)
         await seed_gmv_sources(pool)
+        await seed_stock_issues(pool)
         await seed_ui_translate(pool)
     finally:
         await pool.close()
@@ -132,6 +146,28 @@ async def seed_gmv_sources(pool) -> None:
                 row["Label"],
                 row["Source_Type"],
                 _bool(row["Requires_Traffic"]),
+                int(row["Sort_Order"]),
+                row["Status"],
+            )
+
+
+async def seed_stock_issues(pool) -> None:
+    rows = _read_csv(REFERENCE_DIR / "stock_issues.csv")
+    async with pool.acquire() as connection:
+        for row in rows:
+            await connection.execute(
+                """
+                INSERT INTO stock_issues (
+                    stock_issue_id, label, sort_order, status
+                )
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (stock_issue_id) DO UPDATE
+                SET label = EXCLUDED.label,
+                    sort_order = EXCLUDED.sort_order,
+                    status = EXCLUDED.status
+                """,
+                row["Stock_Issue_ID"],
+                row["Label"],
                 int(row["Sort_Order"]),
                 row["Status"],
             )

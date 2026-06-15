@@ -1,0 +1,4 @@
+Stock_Issue_ID,Label,Sort_Order,Status
+size_empty,Size Habis,1,Aktif
+color_empty,Warna Habis,2,Aktif
+stock_empty,Stok Kosong,3,Aktif

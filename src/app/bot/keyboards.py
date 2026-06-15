@@ -172,36 +172,36 @@ def sales_edit_menu_keyboard(
 
 def stock_issue_keyboard(
     options: Sequence[tuple[str, str]],
-    selected_option_ids: set[str],
+    selected_issue_ids: set[str],
     selected_prefix: str,
     none_label: str,
-    other_label: str,
-    done_label: str,
+    next_label: str | None,
 ) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = []
-    option_buttons = [
-        InlineKeyboardButton(
-            f"{selected_prefix} {label}" if option_id in selected_option_ids else label,
-            callback_data=f"stock_issue:toggle:{option_id}",
-        )
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"{selected_prefix} {label}" if option_id in selected_issue_ids else label,
+                callback_data=f"stock_issue:toggle:{option_id}",
+            )
+        ]
         for option_id, label in options
     ]
-
-    for index in range(0, len(option_buttons), 2):
-        rows.append(option_buttons[index : index + 2])
-
-    rows.append(
-        [
-            InlineKeyboardButton(other_label, callback_data="stock_issue:other"),
-            InlineKeyboardButton(none_label, callback_data="stock_issue:none"),
-        ]
-    )
-    rows.append([InlineKeyboardButton(done_label, callback_data="stock_issue:done")])
+    if not selected_issue_ids:
+        rows.append([InlineKeyboardButton(none_label, callback_data="stock_issue:none")])
+    if next_label is not None:
+        rows.append([InlineKeyboardButton(next_label, callback_data="stock_issue:continue")])
     return InlineKeyboardMarkup(rows)
 
 
-def stock_issue_detail_keyboard(continue_label: str, skip_label: str | None) -> InlineKeyboardMarkup:
-    row = [InlineKeyboardButton(continue_label, callback_data="stock_issue:detail_continue")]
+def stock_issue_detail_keyboard(
+    continue_label: str,
+    skip_label: str | None,
+    previous_label: str,
+) -> InlineKeyboardMarkup:
+    row = [
+        InlineKeyboardButton(previous_label, callback_data="stock_issue:detail_previous"),
+        InlineKeyboardButton(continue_label, callback_data="stock_issue:detail_continue"),
+    ]
     if skip_label is not None:
         row.append(InlineKeyboardButton(skip_label, callback_data="stock_issue:detail_skip"))
     return InlineKeyboardMarkup([row])

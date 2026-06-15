@@ -87,6 +87,7 @@ def _flow_with_stores(stores: list[StoreLocation]) -> tuple[ReportFlow, "_FakeCh
         templates_repository=_FakeTemplatesRepository(templates),
         stores=_FakeStores(stores),
         sales_sources=SimpleNamespace(),
+        stock_issues=SimpleNamespace(),
         users=SimpleNamespace(),
         reports=SimpleNamespace(),
         sessions=sessions,

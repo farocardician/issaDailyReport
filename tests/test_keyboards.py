@@ -7,6 +7,7 @@ from app.bot.keyboards import (
     start_again_keyboard,
     start_location_keyboard,
     stock_issue_detail_keyboard,
+    stock_issue_keyboard,
 )
 
 
@@ -34,10 +35,11 @@ def test_start_again_keyboard() -> None:
 
 
 def test_stock_issue_detail_keyboard_uses_context_continue_not_done() -> None:
-    keyboard = stock_issue_detail_keyboard("Lanjut ke Warna Habis", "Lewati SKU").to_dict()
+    keyboard = stock_issue_detail_keyboard("Lanjut ke Warna Habis", "Lewati SKU", "Sebelumnya").to_dict()
 
     buttons = keyboard["inline_keyboard"][0]
     assert buttons == [
+        {"callback_data": "stock_issue:detail_previous", "text": "Sebelumnya"},
         {"callback_data": "stock_issue:detail_continue", "text": "Lanjut ke Warna Habis"},
         {"callback_data": "stock_issue:detail_skip", "text": "Lewati SKU"},
     ]
@@ -45,10 +47,45 @@ def test_stock_issue_detail_keyboard_uses_context_continue_not_done() -> None:
 
 
 def test_stock_issue_detail_keyboard_hides_skip_when_sku_exists() -> None:
-    keyboard = stock_issue_detail_keyboard("Lanjut ke Catatan", None).to_dict()
+    keyboard = stock_issue_detail_keyboard("Lanjut ke Catatan", None, "Sebelumnya").to_dict()
 
     assert keyboard["inline_keyboard"] == [
-        [{"callback_data": "stock_issue:detail_continue", "text": "Lanjut ke Catatan"}]
+        [
+            {"callback_data": "stock_issue:detail_previous", "text": "Sebelumnya"},
+            {"callback_data": "stock_issue:detail_continue", "text": "Lanjut ke Catatan"},
+        ]
+    ]
+
+
+def test_stock_issue_keyboard_empty_selection_shows_none_only() -> None:
+    keyboard = stock_issue_keyboard(
+        [("size_empty", "Size Habis"), ("color_empty", "Warna Habis")],
+        set(),
+        "✓",
+        "Tidak Ada",
+        None,
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "stock_issue:toggle:size_empty", "text": "Size Habis"}],
+        [{"callback_data": "stock_issue:toggle:color_empty", "text": "Warna Habis"}],
+        [{"callback_data": "stock_issue:none", "text": "Tidak Ada"}],
+    ]
+
+
+def test_stock_issue_keyboard_selected_shows_dynamic_next_only() -> None:
+    keyboard = stock_issue_keyboard(
+        [("size_empty", "Size Habis"), ("color_empty", "Warna Habis")],
+        {"color_empty"},
+        "✓",
+        "Tidak Ada",
+        "Lanjut input Warna Habis",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "stock_issue:toggle:size_empty", "text": "Size Habis"}],
+        [{"callback_data": "stock_issue:toggle:color_empty", "text": "✓ Warna Habis"}],
+        [{"callback_data": "stock_issue:continue", "text": "Lanjut input Warna Habis"}],
     ]
 
 

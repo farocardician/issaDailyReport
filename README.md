@@ -37,8 +37,9 @@ From the SPG's point of view, submitting a report looks like this:
    - No match → choose the store manually.
 3. **Enter PIN** — identifies the staff member.
 4. **Input sales by source** — choose sales sources such as Outlet, Whatsapp, Shopee, Tokopedia, Tiktok, or Website, then enter GMV, orders, pieces, and traffic where required.
-5. **Review & submit** — the bot shows a summary; the SPG confirms.
-6. **Admin notified** — a formatted summary is sent to the admin chat.
+5. **Stock issues & note** — pick any stock problems (and the affected SKUs), or tap **Tidak Ada**, then add an optional note.
+6. **Review & submit** — the bot shows a summary; the SPG confirms.
+7. **Admin notified** — a formatted summary is sent to the admin chat.
 
 Submitting a report for a store/date that already has one is allowed: it is saved as a **correction** rather than overwriting the original. If the SPG cancels, the bot shows a **Mulai** button to start again.
 
@@ -142,7 +143,7 @@ In `webhook` mode, Telegram needs a public HTTPS URL. A Cloudflare named tunnel 
 
 ## Editing the bot's text (`ui_translate`)
 
-All fixed bot wording — prompts, button labels, store/area/distance formats, stock-issue labels, location-status labels, and admin notifications — lives in the **`ui_translate`** database table (seeded from `Reference/ui_translate.csv`). Sales source labels live in **`gmv_sources`** (seeded from `Reference/gmv_sources.csv`).
+All fixed bot wording — prompts, button labels, store/area/distance formats, stock-issue prompts, location-status labels, and admin notifications — lives in the **`ui_translate`** database table (seeded from `Reference/ui_translate.csv`). Configurable list labels live in their own tables: sales sources in **`gmv_sources`** (`Reference/gmv_sources.csv`) and stock issues in **`stock_issues`** (`Reference/stock_issues.csv`).
 
 After seeding, edit the text directly in the `ui_translate` table with any database client. Running `make seed` again restores the values from the CSV.
 
@@ -167,7 +168,8 @@ Column reference:
 3. Confirm or choose the store.
 4. Enter PIN `123123` (the seeded test PIN).
 5. Choose sales sources and fill in each requested value.
-6. Submit.
+6. Pick any stock issues (and affected SKUs), or tap **Tidak Ada**, then add a note.
+7. Submit.
 
 Submitting again for the **same store and date** creates a second report with `submission_status = correction`.
 
@@ -240,7 +242,7 @@ This uses `repomix.config.json` and writes `repomix-output.xml` (ignored by git)
 | `src/app/bot/flow.py` | Wires Telegram updates, business decisions, the database, and replies together. |
 | `src/app/bot/` | Telegram handlers, keyboards, progress indicators, and notifications. |
 | `sql/schema.sql` | Database schema, applied idempotently on startup and during seeding. |
-| `Reference/*.csv` | Seed inputs (stores, users, sales sources, UI text). The app never writes back to these. |
+| `Reference/*.csv` | Seed inputs (stores, users, sales sources, stock issues, UI text). The app never writes back to these. |
 | `tests/` | Unit tests for the domain logic and UI helpers. |
 
 For the full architecture, the report state machine, and contribution rules, see [`CLAUDE.md`](./CLAUDE.md).

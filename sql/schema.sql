@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS gmv_sources (
 CREATE INDEX IF NOT EXISTS idx_gmv_sources_active_order
     ON gmv_sources(status, sort_order);
 
+CREATE TABLE IF NOT EXISTS stock_issues (
+    stock_issue_id text PRIMARY KEY,
+    label text NOT NULL,
+    sort_order integer NOT NULL DEFAULT 0,
+    status text NOT NULL DEFAULT 'Aktif'
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_issues_active_order
+    ON stock_issues(status, sort_order);
+
 CREATE TABLE IF NOT EXISTS daily_reports (
     report_id text PRIMARY KEY,
     report_date date NOT NULL,

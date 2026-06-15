@@ -13,7 +13,7 @@ ASK_SALES_TRAFFIC,"{{progress}}\n{{source_progress}}\n\nBerapa jumlah traffic / 
 ASK_SALES_GMV,"{{progress}}\n{{source_progress}}\n\nBerapa GMV dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
 ASK_SALES_ORDER,"{{progress}}\n{{source_progress}}\n\nBerapa total order / transaksi dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
 ASK_SALES_PIECES,"{{progress}}\n{{source_progress}}\n\nBerapa total pieces / item terjual dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
-ASK_STOCK_ISSUE,"{{progress}}\n\nAda kendala stok?\n\n{{selected_issues}}\n\nPilih satu atau lebih, lalu tekan <b>Selesai</b>.\nKalau tidak ada kendala, tekan <b>Tidak Ada</b>.\nKalau ingin isi manual, tekan <b>Lainnya</b> atau langsung ketik kendalanya."
+ASK_STOCK_ISSUE,"{{progress}}\n\nApakah ada kendala stok hari ini?\n\n{{selected_issues}}\n\nPilih satu atau lebih kendala untuk lanjut input.\nKalau tidak ada kendala, tekan <b>Tidak Ada</b>."
 ASK_NOTE,"{{progress}}\n\nCatatan tambahan?\n\nKetik catatan, atau tekan <b>Tidak Ada</b>."
 SALES_SUMMARY,"{{progress}}\n\nRingkasan penjualan:\n\n{{sales_breakdown}}\n\nTotal GMV: {{total_gmv}}\nTotal Order: {{total_order}}\nTotal Pieces: {{total_pieces}}\n\nLanjutkan, ubah, atau batalkan laporan?"
 REPORT_SUMMARY,{{progress}}\n\nBerikut ringkasan laporan:\n\n<b>{{store_label}}</b>\n\nPenjualan:\n{{sales_breakdown}}\n\nTotal GMV: {{total_gmv}}\nTotal Order: {{total_order}}\nTotal Pieces: {{total_pieces}}\n\nKendala stok:\n{{stock_issue}}\n\nCatatan:\n{{note}}\n\nSubmit laporan ini?
@@ -33,6 +33,7 @@ BUTTON_CANCEL,Batal
 BUTTON_PREVIOUS,Sebelumnya
 BUTTON_NO_SALES,Tidak Ada Penjualan
 BUTTON_SALES_INPUT_NEXT,Lanjut input {{source}}
+BUTTON_STOCK_ISSUE_NEXT,Lanjut input {{issue}}
 BUTTON_SALES_CONTINUE,Lanjutkan
 BUTTON_SALES_EDIT,Ubah
 BUTTON_EDIT_SOURCES,Tambah / Hapus Sumber Penjualan
@@ -40,9 +41,7 @@ BUTTON_BACK_TO_SUMMARY,Kembali ke Ringkasan
 BUTTON_DUPLICATE_CONFIRM,"Ya, koreksi"
 BUTTON_DUPLICATE_CANCEL,Batal
 BUTTON_NONE,Tidak Ada
-BUTTON_DONE,Selesai
 BUTTON_SKIP,Lewati
-BUTTON_STOCK_ISSUE_OTHER,Lainnya
 BUTTON_CONTINUE_TO_NEXT_ISSUE,Lanjut ke {{next_issue_label}}
 BUTTON_CONTINUE_TO_NEXT_PHASE,Lanjut ke {{next_phase_label}}
 BUTTON_SKIP_SKU,Lewati SKU
@@ -53,7 +52,8 @@ CONTEXTUAL_STEP_FORMAT,{{label}} {{current}}/{{total}} · {{title}}
 PROGRESS_PHASE_STORE,Pilih Toko
 PROGRESS_PHASE_PIN,Verifikasi PIN
 PROGRESS_PHASE_SALES,Sumber Penjualan
-PROGRESS_PHASE_ISSUE_NOTE,Kendala & Catatan
+PROGRESS_PHASE_STOCK_ISSUE,Kendala Stok
+PROGRESS_PHASE_NOTE,Catatan
 PROGRESS_PHASE_REVIEW_SUBMIT,Review & Submit
 SALES_SOURCE_STEP_LABEL,Sumber
 STORE_LABEL_FORMAT,"{{brand}} – {{department_store}} {{branch}}, {{city}}"
@@ -64,19 +64,10 @@ DISTANCE_EMPTY,-
 LOCATION_STATUS_IN_RADIUS,Dalam radius
 LOCATION_STATUS_OUT_OF_RADIUS,Di luar radius
 LOCATION_STATUS_MANUAL_STORE_SELECTION,Pilih toko manual
-STOCK_ISSUE_OPTION_SIZE_EMPTY,Size habis
-STOCK_ISSUE_OPTION_COLOR_EMPTY,Warna habis
-STOCK_ISSUE_OPTION_NOT_ARRIVED,Barang belum datang
-STOCK_ISSUE_OPTION_STOCK_EMPTY,Stok kosong
 STOCK_ISSUE_DETAIL_STEP_LABEL,Kendala
-STOCK_ISSUE_DETAIL_TITLE_SIZE_EMPTY,Size Habis
-STOCK_ISSUE_DETAIL_TITLE_COLOR_EMPTY,Warna Habis
-STOCK_ISSUE_DETAIL_TITLE_NOT_ARRIVED,Barang Belum Datang
-STOCK_ISSUE_DETAIL_TITLE_STOCK_EMPTY,Stok Kosong
 NEXT_PHASE_NOTE_LABEL,Catatan
 STOCK_ISSUE_SELECTED_EMPTY,Belum ada yang dipilih.
 STOCK_ISSUE_SELECTED_HEADER,Dipilih:
-STOCK_ISSUE_CUSTOM_PROMPT,Ketik kendala stok lainnya.
 STOCK_ISSUE_DETAIL_PROMPT,"{{progress}}\n{{detail_progress}}\n\nUntuk kendala <b>{{issue}}</b>, SKU apa saja yang terdampak?\n\n{{sku_list}}\n\n{{instructions}}"
 STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION,"Ketik SKU satu per satu, atau beberapa SKU dipisahkan koma."
 STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION,Tekan <b>Lewati SKU</b> kalau tidak perlu isi SKU.
@@ -84,7 +75,6 @@ STOCK_ISSUE_SKU_EMPTY,Belum ada SKU yang diinput.
 STOCK_ISSUE_SKU_HEADER,SKU yang sudah diinput:
 STOCK_ISSUE_DETAIL_EMPTY_VALUE,-
 STOCK_ISSUE_DETAIL_LINE,{{issue}}: {{sku_list}}
-STOCK_ISSUE_CUSTOM_LABEL,Lainnya
 SALES_SUMMARY_LINE,"<b>{{source}}</b>: Traffic {{traffic}}, GMV {{gmv}}, Order {{order_count}}, Pieces {{pieces_sold}}"
 SALES_SUMMARY_INVALID_HINT,"Pilih <b>Lanjutkan</b>, <b>Ubah</b>, atau <b>Batal</b>."
 SALES_NO_SALES_LABEL,Tidak Ada Penjualan

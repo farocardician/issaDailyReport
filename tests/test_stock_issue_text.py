@@ -35,9 +35,9 @@ def test_first_stock_issue_selection_text_has_no_detail_substep() -> None:
 
 
 def test_selected_issue_list_displays_checklist() -> None:
-    text = selected_issue_text(_templates(), ["Size habis", "Warna habis"])
+    text = selected_issue_text(_templates(), ["Size Habis", "Warna Habis"])
 
-    assert text == "Dipilih:\n✓ Size habis\n✓ Warna habis"
+    assert text == "Dipilih:\n✓ Size Habis\n✓ Warna Habis"
 
 
 def test_empty_sku_state_displays_empty_copy() -> None:

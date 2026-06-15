@@ -10,6 +10,7 @@ from telegram.constants import ChatType
 from app.bot.flow import ReportFlow
 from app.domain.sales_sources import GmvSource
 from app.domain.session_state import Step
+from app.domain.stock_issues import StockIssue
 from app.domain.store_matching import StoreLocation
 from app.templates import MessageTemplates
 
@@ -37,7 +38,7 @@ def test_no_sales_reaches_stock_issue_and_final_review_admin_show_zero_totals() 
     assert sessions.session["current_step"] == Step.ASK_STOCK_ISSUE.value
     assert sessions.session["draft_report"]["sales_no_sales"] is True
 
-    asyncio.run(flow.handle_message(_text_update(chat, "Tidak Ada"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stock_issue:none"), SimpleNamespace()))
     asyncio.run(flow.handle_message(_text_update(chat, "Tidak Ada"), SimpleNamespace()))
 
     assert sessions.session["current_step"] == Step.REVIEW_SUMMARY.value
@@ -236,6 +237,7 @@ def _flow(
         templates_repository=_FakeTemplatesRepository(templates),
         stores=_FakeStores([_store()]),
         sales_sources=_FakeSalesSources(sources or [_source("outlet", "Outlet", True, 1), _source("shopee", "Shopee", sort_order=3), _source("tokopedia", "Tokopedia", sort_order=4)]),
+        stock_issues=_FakeStockIssues([_stock_issue("size_empty", "Size Habis")]),
         users=SimpleNamespace(),
         reports=reports,
         sessions=sessions,
@@ -266,6 +268,7 @@ def _templates() -> dict[str, str]:
         "BUTTON_NO_SALES": "Tidak Ada Penjualan",
         "BUTTON_PREVIOUS": "Sebelumnya",
         "BUTTON_SALES_INPUT_NEXT": "Lanjut input {{source}}",
+        "BUTTON_STOCK_ISSUE_NEXT": "Lanjut input {{issue}}",
         "BUTTON_SALES_CONTINUE": "Lanjutkan",
         "BUTTON_SALES_EDIT": "Ubah",
         "BUTTON_CANCEL": "Batal",
@@ -275,26 +278,21 @@ def _templates() -> dict[str, str]:
         "BUTTON_RESTART": "Ulangi",
         "BUTTON_DUPLICATE_CONFIRM": "Ya, koreksi",
         "BUTTON_DUPLICATE_CANCEL": "Batal",
-        "BUTTON_STOCK_ISSUE_OTHER": "Lainnya",
-        "BUTTON_DONE": "Selesai",
         "SELECTED_PREFIX": "✓",
         "SALES_SOURCES_SELECTED_EMPTY": "Belum ada sumber penjualan yang dipilih.",
         "SALES_SOURCES_SELECTED_HEADER": "Dipilih:",
-        "SALES_SUMMARY_LINE": "{{source}} | traffic={{traffic}} | gmv={{gmv}} | order={{order_count}} | pieces={{pieces_sold}}",
-        "SALES_NO_SALES_LABEL": "Tidak Ada Penjualan",
         "STOCK_ISSUE_SELECTED_EMPTY": "Belum ada yang dipilih.",
         "STOCK_ISSUE_SELECTED_HEADER": "Dipilih:",
-        "STOCK_ISSUE_OPTION_SIZE_EMPTY": "Size habis",
-        "STOCK_ISSUE_OPTION_COLOR_EMPTY": "Warna habis",
-        "STOCK_ISSUE_OPTION_NOT_ARRIVED": "Barang belum datang",
-        "STOCK_ISSUE_OPTION_STOCK_EMPTY": "Stok kosong",
+        "SALES_SUMMARY_LINE": "{{source}} | traffic={{traffic}} | gmv={{gmv}} | order={{order_count}} | pieces={{pieces_sold}}",
+        "SALES_NO_SALES_LABEL": "Tidak Ada Penjualan",
         "PROGRESS_MAIN_LABEL": "Langkah",
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "CONTEXTUAL_STEP_FORMAT": "{{label}} {{current}}/{{total}} · {{title}}",
         "PROGRESS_PHASE_STORE": "Pilih Toko",
         "PROGRESS_PHASE_PIN": "Verifikasi PIN",
         "PROGRESS_PHASE_SALES": "Sumber Penjualan",
-        "PROGRESS_PHASE_ISSUE_NOTE": "Kendala & Catatan",
+        "PROGRESS_PHASE_STOCK_ISSUE": "Kendala Stok",
+        "PROGRESS_PHASE_NOTE": "Catatan",
         "PROGRESS_PHASE_REVIEW_SUBMIT": "Review & Submit",
         "SALES_SOURCE_STEP_LABEL": "Sumber",
         "STORE_LABEL_FORMAT": "{{brand}} - {{department_store}} {{branch}}, {{city}}",
@@ -318,6 +316,20 @@ def _source(
         label=label,
         source_type="outlet" if requires_traffic else "marketplace",
         requires_traffic=requires_traffic,
+        sort_order=sort_order,
+        status=status,
+    )
+
+
+def _stock_issue(
+    stock_issue_id: str,
+    label: str,
+    sort_order: int = 1,
+    status: str = "Aktif",
+) -> StockIssue:
+    return StockIssue(
+        stock_issue_id=stock_issue_id,
+        label=label,
         sort_order=sort_order,
         status=status,
     )
@@ -424,6 +436,14 @@ class _FakeSalesSources:
 
     async def list_active(self, active_status: str) -> list[GmvSource]:
         return [source for source in self._sources if source.status == active_status]
+
+
+class _FakeStockIssues:
+    def __init__(self, issues: list[StockIssue]) -> None:
+        self._issues = issues
+
+    async def list_active(self, active_status: str) -> list[StockIssue]:
+        return [issue for issue in self._issues if issue.status == active_status]
 
 
 class _FakeReports:

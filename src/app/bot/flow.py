@@ -50,11 +50,13 @@ from app.domain.geo import haversine_meters
 from app.domain.report import build_summary, generate_report_id, location_status
 from app.domain.sales_sources import GmvSource, input_plan, source_fields
 from app.domain.session_state import Step, next_step
+from app.domain.stock_issues import StockIssue
 from app.domain.store_matching import MatchType, StoreCandidate, StoreLocation, match_stores
 from app.domain.validation import normalize_text_dash, parse_int_lenient
 from app.repositories.reports import ReportsRepository
 from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
+from app.repositories.stock_issues import StockIssuesRepository
 from app.repositories.stores import StoresRepository
 from app.repositories.templates import TemplatesRepository
 from app.repositories.users import UsersRepository
@@ -72,21 +74,6 @@ SALES_FIELD_TEMPLATE_KEYS = {
     "pieces_sold": "ASK_SALES_PIECES",
 }
 
-STOCK_ISSUE_OPTIONS = (
-    ("size_empty", "STOCK_ISSUE_OPTION_SIZE_EMPTY"),
-    ("color_empty", "STOCK_ISSUE_OPTION_COLOR_EMPTY"),
-    ("not_arrived", "STOCK_ISSUE_OPTION_NOT_ARRIVED"),
-    ("stock_empty", "STOCK_ISSUE_OPTION_STOCK_EMPTY"),
-)
-
-STOCK_ISSUE_DETAIL_TITLE_KEYS = {
-    "size_empty": "STOCK_ISSUE_DETAIL_TITLE_SIZE_EMPTY",
-    "color_empty": "STOCK_ISSUE_DETAIL_TITLE_COLOR_EMPTY",
-    "not_arrived": "STOCK_ISSUE_DETAIL_TITLE_NOT_ARRIVED",
-    "stock_empty": "STOCK_ISSUE_DETAIL_TITLE_STOCK_EMPTY",
-}
-
-
 class ReportFlow:
     def __init__(
         self,
@@ -95,6 +82,7 @@ class ReportFlow:
         templates_repository: TemplatesRepository,
         stores: StoresRepository,
         sales_sources: SalesSourcesRepository,
+        stock_issues: StockIssuesRepository,
         users: UsersRepository,
         reports: ReportsRepository,
         sessions: SessionsRepository,
@@ -104,6 +92,7 @@ class ReportFlow:
         self._templates_repository = templates_repository
         self._stores = stores
         self._sales_sources = sales_sources
+        self._stock_issues = stock_issues
         self._users = users
         self._reports = reports
         self._sessions = sessions
@@ -512,30 +501,17 @@ class ReportFlow:
             await self._append_stock_issue_skus(update, session, draft, text)
             return
 
-        if await self._is_none_answer(text):
-            await self._save_stock_issue_and_continue(update, session, "-")
-            return
-
-        custom_issues = list(draft.get("stock_issue_custom", []))
-        custom_issue = normalize_text_dash(text)
-        if custom_issue != "-" and custom_issue not in custom_issues:
-            custom_issues.append(custom_issue)
-        draft["stock_issue_custom"] = custom_issues
-        draft["stock_issue_waiting_custom"] = False
-        await self._persist(
-            update,
-            Step.ASK_STOCK_ISSUE,
-            draft,
-            selected_store_id=session["selected_store_id"],
-            user_id=session["user_id"],
-        )
         await self._send_stock_issue_prompt(update, draft)
 
     async def _handle_stock_issue_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
         draft = dict(session["draft_report"])
 
-        if data in {"stock_issue:detail_continue", "stock_issue:detail_done"}:
+        if data == "stock_issue:detail_continue":
             await self._advance_stock_issue_detail(update, session, draft)
+            return
+
+        if data == "stock_issue:detail_previous":
+            await self._handle_stock_issue_detail_previous(update, session, draft)
             return
 
         if data == "stock_issue:detail_skip":
@@ -549,17 +525,30 @@ class ReportFlow:
 
         if data.startswith("stock_issue:toggle:"):
             option_id = data.removeprefix("stock_issue:toggle:")
-            if option_id not in {option_id for option_id, _ in STOCK_ISSUE_OPTIONS}:
+            stock_issues = await self._active_stock_issues()
+            issue_by_id = {issue.stock_issue_id: issue for issue in stock_issues}
+            if option_id not in issue_by_id:
                 await self._send(update, "UNKNOWN_COMMAND")
                 return
 
-            selected_ids = set(draft.get("stock_issue_option_ids", []))
+            selected_ids = set(draft.get("stock_issue_ids", []))
             if option_id in selected_ids:
                 selected_ids.remove(option_id)
             else:
                 selected_ids.add(option_id)
-            draft["stock_issue_option_ids"] = sorted(selected_ids)
-            draft["stock_issue_waiting_custom"] = False
+            ordered_ids = [issue.stock_issue_id for issue in stock_issues if issue.stock_issue_id in selected_ids]
+            labels = dict(draft.get("stock_issue_labels", {}))
+            for issue in stock_issues:
+                if issue.stock_issue_id in ordered_ids and issue.stock_issue_id not in labels:
+                    labels[issue.stock_issue_id] = issue.label
+            details = dict(draft.get("stock_issue_sku_details", {}))
+            draft["stock_issue_ids"] = ordered_ids
+            draft["stock_issue_labels"] = {issue_id: labels[issue_id] for issue_id in ordered_ids if issue_id in labels}
+            draft["stock_issue_sku_details"] = {
+                issue_id: details[issue_id] for issue_id in ordered_ids if issue_id in details
+            }
+            draft.pop("stock_issue_detail_option_id", None)
+            draft.pop("stock_issue_detail_option_ids", None)
             await self._persist(
                 update,
                 Step.ASK_STOCK_ISSUE,
@@ -570,26 +559,19 @@ class ReportFlow:
             await self._edit_stock_issue_prompt(update, draft)
             return
 
-        if data == "stock_issue:other":
-            draft["stock_issue_waiting_custom"] = True
-            await self._persist(
-                update,
-                Step.ASK_STOCK_ISSUE,
-                draft,
-                selected_store_id=session["selected_store_id"],
-                user_id=session["user_id"],
-            )
-            await self._send(update, "STOCK_ISSUE_CUSTOM_PROMPT")
+        if data == "stock_issue:continue":
+            if not draft.get("stock_issue_ids"):
+                await self._edit_stock_issue_prompt(update, draft)
+                return
+            await self._start_stock_issue_details(update, session, draft, await self._active_stock_issues())
             return
 
         if data == "stock_issue:none":
+            if draft.get("stock_issue_ids"):
+                await self._edit_stock_issue_prompt(update, draft)
+                return
             await self._remove_callback_keyboard(update)
             await self._save_stock_issue_and_continue(update, session, "-")
-            return
-
-        if data == "stock_issue:done":
-            await self._remove_callback_keyboard(update)
-            await self._start_stock_issue_details_or_save(update, session, draft)
             return
 
         await self._send(update, "UNKNOWN_COMMAND")
@@ -602,9 +584,8 @@ class ReportFlow:
     ) -> None:
         draft = dict(session["draft_report"])
         draft["stock_issue"] = stock_issue
-        draft.pop("stock_issue_option_ids", None)
-        draft.pop("stock_issue_custom", None)
-        draft.pop("stock_issue_waiting_custom", None)
+        draft.pop("stock_issue_ids", None)
+        draft.pop("stock_issue_labels", None)
         draft.pop("stock_issue_detail_option_ids", None)
         draft.pop("stock_issue_detail_option_id", None)
         draft.pop("stock_issue_sku_details", None)
@@ -617,20 +598,56 @@ class ReportFlow:
         )
         await self._send_step_prompt(update, Step.ASK_NOTE)
 
-    async def _start_stock_issue_details_or_save(
+    async def _start_stock_issue_details(
         self,
         update: Update,
         session: dict[str, Any],
         draft: dict[str, Any],
+        stock_issues: list[StockIssue],
     ) -> None:
-        detail_option_ids = self._ordered_selected_stock_issue_ids(draft)
-        if not detail_option_ids:
+        selected_ids = [
+            issue.stock_issue_id
+            for issue in stock_issues
+            if issue.stock_issue_id in set(draft.get("stock_issue_ids", []))
+        ]
+        if not selected_ids:
+            draft["stock_issue_ids"] = []
+            await self._persist(
+                update,
+                Step.ASK_STOCK_ISSUE,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._edit_stock_issue_prompt(update, draft)
+            return
+
+        issue_by_id = {issue.stock_issue_id: issue for issue in stock_issues}
+        existing_labels = dict(draft.get("stock_issue_labels", {}))
+        existing_details = dict(draft.get("stock_issue_sku_details", {}))
+        labels = {
+            issue_id: existing_labels.get(issue_id) or issue_by_id[issue_id].label
+            for issue_id in selected_ids
+        }
+        details = {
+            issue_id: list(existing_details[issue_id])
+            for issue_id in selected_ids
+            if issue_id in existing_details
+        }
+        missing_ids = [issue_id for issue_id in selected_ids if issue_id not in details]
+
+        draft["stock_issue_ids"] = selected_ids
+        draft["stock_issue_labels"] = labels
+        draft["stock_issue_sku_details"] = details
+        draft["stock_issue_detail_option_ids"] = selected_ids
+
+        if not missing_ids:
+            await self._remove_callback_keyboard(update)
             await self._save_stock_issue_and_continue(update, session, await self._stock_issue_value(draft))
             return
 
-        draft["stock_issue_detail_option_ids"] = detail_option_ids
-        draft["stock_issue_detail_option_id"] = detail_option_ids[0]
-        draft["stock_issue_sku_details"] = dict(draft.get("stock_issue_sku_details", {}))
+        draft["stock_issue_detail_option_id"] = missing_ids[0]
+        await self._remove_callback_keyboard(update)
         await self._persist(
             update,
             Step.ASK_STOCK_ISSUE,
@@ -639,6 +656,42 @@ class ReportFlow:
             user_id=session["user_id"],
         )
         await self._send_stock_issue_detail_prompt(update, draft)
+
+    async def _handle_stock_issue_detail_previous(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        draft: dict[str, Any],
+    ) -> None:
+        detail_option_ids = list(draft.get("stock_issue_detail_option_ids", []))
+        current_option_id = draft.get("stock_issue_detail_option_id")
+        if current_option_id not in detail_option_ids:
+            await self._send_stock_issue_prompt(update, draft)
+            return
+
+        current_index = detail_option_ids.index(current_option_id)
+        if current_index > 0:
+            draft["stock_issue_detail_option_id"] = detail_option_ids[current_index - 1]
+            await self._persist(
+                update,
+                Step.ASK_STOCK_ISSUE,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_stock_issue_detail_prompt(update, draft)
+            return
+
+        draft.pop("stock_issue_detail_option_id", None)
+        draft.pop("stock_issue_detail_option_ids", None)
+        await self._persist(
+            update,
+            Step.ASK_STOCK_ISSUE,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_stock_issue_prompt(update, draft)
 
     async def _append_stock_issue_skus(
         self,
@@ -1203,7 +1256,7 @@ class ReportFlow:
         await self._send(
             update,
             "STOCK_ISSUE_DETAIL_PROMPT",
-            issue=await self._stock_issue_option_label(draft["stock_issue_detail_option_id"]),
+            issue=await self._stock_issue_option_label(draft, draft["stock_issue_detail_option_id"]),
             detail_progress=await self._stock_issue_detail_progress(draft),
             sku_list=await self._stock_issue_sku_text(draft),
             instructions=await self._stock_issue_detail_instruction_text(draft),
@@ -1345,15 +1398,13 @@ class ReportFlow:
 
     async def _stock_issue_keyboard(self, draft: dict[str, Any]):
         await self._refresh_templates()
-        selected_ids = set(draft.get("stock_issue_option_ids", []))
-        options = [(option_id, self._templates.render(template_key)) for option_id, template_key in STOCK_ISSUE_OPTIONS]
+        options = [(issue.stock_issue_id, issue.label) for issue in await self._active_stock_issues()]
         return stock_issue_keyboard(
             options,
-            selected_ids,
+            set(draft.get("stock_issue_ids", [])),
             self._templates.render("SELECTED_PREFIX"),
             self._templates.render("BUTTON_NONE"),
-            self._templates.render("BUTTON_STOCK_ISSUE_OTHER"),
-            self._templates.render("BUTTON_DONE"),
+            await self._stock_issue_next_label(draft),
         )
 
     async def _stock_issue_detail_keyboard(self, draft: dict[str, Any]):
@@ -1363,12 +1414,39 @@ class ReportFlow:
             self._templates.render("BUTTON_SKIP_SKU")
             if not has_current_sku_values(draft, draft["stock_issue_detail_option_id"])
             else None,
+            self._templates.render("BUTTON_PREVIOUS"),
         )
 
     async def _stock_issue_selected_text(self, draft: dict[str, Any]) -> str:
-        selected = await self._stock_issue_category_values(draft)
+        selected_ids = list(draft.get("stock_issue_ids", []))
+        active_issues = {issue.stock_issue_id: issue for issue in await self._active_stock_issues()}
+        labels_by_id = dict(draft.get("stock_issue_labels", {}))
+        labels = []
+        for issue_id in selected_ids:
+            label = labels_by_id.get(issue_id)
+            if label is None and issue_id in active_issues:
+                label = active_issues[issue_id].label
+            if label is not None:
+                labels.append(label)
         await self._refresh_templates()
-        return selected_issue_text(self._templates, selected)
+        return selected_issue_text(self._templates, labels)
+
+    async def _stock_issue_next_label(self, draft: dict[str, Any]) -> str | None:
+        selected_ids = list(draft.get("stock_issue_ids", []))
+        if not selected_ids:
+            return None
+
+        active_issues = {issue.stock_issue_id: issue for issue in await self._active_stock_issues()}
+        labels_by_id = dict(draft.get("stock_issue_labels", {}))
+        issue_id = selected_ids[0]
+        label = labels_by_id.get(issue_id)
+        if label is None and issue_id in active_issues:
+            label = active_issues[issue_id].label
+        if label is None:
+            return None
+
+        await self._refresh_templates()
+        return self._templates.render_plain("BUTTON_STOCK_ISSUE_NEXT", issue=label)
 
     async def _stock_issue_value(self, draft: dict[str, Any]) -> str:
         await self._refresh_templates()
@@ -1376,23 +1454,13 @@ class ReportFlow:
         details = dict(draft.get("stock_issue_sku_details", {}))
         empty_value = self._templates.render("STOCK_ISSUE_DETAIL_EMPTY_VALUE")
 
-        for option_id in self._ordered_selected_stock_issue_ids(draft):
+        for option_id in draft.get("stock_issue_detail_option_ids", []):
             sku_values = list(details.get(option_id, []))
             lines.append(
                 self._templates.render(
                     "STOCK_ISSUE_DETAIL_LINE",
-                    issue=await self._stock_issue_option_label(option_id),
+                    issue=await self._stock_issue_option_label(draft, option_id),
                     sku_list=", ".join(sku_values) if sku_values else empty_value,
-                )
-            )
-
-        custom_issues = list(draft.get("stock_issue_custom", []))
-        if custom_issues:
-            lines.append(
-                self._templates.render(
-                    "STOCK_ISSUE_DETAIL_LINE",
-                    issue=self._templates.render("STOCK_ISSUE_CUSTOM_LABEL"),
-                    sku_list=", ".join(custom_issues),
                 )
             )
 
@@ -1400,30 +1468,16 @@ class ReportFlow:
             return "-"
         return "\n".join(lines)
 
-    async def _stock_issue_category_values(self, draft: dict[str, Any]) -> list[str]:
-        await self._refresh_templates()
-        selected_ids = set(draft.get("stock_issue_option_ids", []))
-        values = [
-            self._templates.render(template_key)
-            for option_id, template_key in STOCK_ISSUE_OPTIONS
-            if option_id in selected_ids
-        ]
-        values.extend(draft.get("stock_issue_custom", []))
-        return values
-
     async def _stock_issue_sku_text(self, draft: dict[str, Any]) -> str:
         current_option_id = draft["stock_issue_detail_option_id"]
         await self._refresh_templates()
         return sku_list_text(self._templates, current_sku_values(draft, current_option_id))
 
-    async def _stock_issue_option_label(self, option_id: str) -> str:
-        await self._refresh_templates()
-        option_templates = dict(STOCK_ISSUE_OPTIONS)
-        return self._templates.render(option_templates[option_id])
+    async def _stock_issue_option_label(self, draft: dict[str, Any], option_id: str) -> str:
+        return str(dict(draft.get("stock_issue_labels", {})).get(option_id, option_id))
 
-    async def _stock_issue_detail_title(self, option_id: str) -> str:
-        await self._refresh_templates()
-        return self._templates.render(STOCK_ISSUE_DETAIL_TITLE_KEYS[option_id])
+    async def _stock_issue_detail_title(self, draft: dict[str, Any], option_id: str) -> str:
+        return str(dict(draft.get("stock_issue_labels", {})).get(option_id, option_id))
 
     async def _stock_issue_detail_progress(self, draft: dict[str, Any]) -> str:
         detail_option_ids = list(draft.get("stock_issue_detail_option_ids", []))
@@ -1434,7 +1488,7 @@ class ReportFlow:
             "STOCK_ISSUE_DETAIL_STEP_LABEL",
             current_detail_position(detail_option_ids, current_option_id),
             len(detail_option_ids),
-            await self._stock_issue_detail_title(current_option_id),
+            await self._stock_issue_detail_title(draft, current_option_id),
         )
 
     async def _stock_issue_detail_continue_label(self, draft: dict[str, Any]) -> str:
@@ -1444,7 +1498,7 @@ class ReportFlow:
         await self._refresh_templates()
         return continue_button_label(
             self._templates,
-            await self._stock_issue_detail_title(next_option_id) if next_option_id is not None else None,
+            await self._stock_issue_detail_title(draft, next_option_id) if next_option_id is not None else None,
             self._templates.render("NEXT_PHASE_NOTE_LABEL"),
         )
 
@@ -1456,9 +1510,8 @@ class ReportFlow:
             not has_current_sku_values(draft, current_option_id),
         )
 
-    def _ordered_selected_stock_issue_ids(self, draft: dict[str, Any]) -> list[str]:
-        selected_ids = set(draft.get("stock_issue_option_ids", []))
-        return [option_id for option_id, _ in STOCK_ISSUE_OPTIONS if option_id in selected_ids]
+    async def _active_stock_issues(self) -> list[StockIssue]:
+        return await self._stock_issues.list_active(self._settings.active_status)
 
     async def _remove_callback_keyboard(self, update: Update) -> None:
         if update.callback_query is None or update.callback_query.message is None:
