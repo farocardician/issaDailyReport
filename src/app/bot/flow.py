@@ -13,9 +13,10 @@ from app.bot.keyboards import (
     duplicate_keyboard,
     manual_store_list_keyboard,
     none_reply_keyboard,
-    share_location_keyboard,
+    retry_location_keyboard,
     stock_issue_detail_keyboard,
     stock_issue_keyboard,
+    start_location_keyboard,
     store_list_keyboard,
     summary_keyboard,
 )
@@ -101,7 +102,8 @@ class ReportFlow:
         await self._send(
             update,
             "START",
-            reply_markup=await self._share_location_keyboard(),
+            manual_store_button=await self._manual_store_button_label(),
+            reply_markup=await self._start_location_keyboard(),
             progress_step=Step.AWAITING_LOCATION,
         )
 
@@ -121,6 +123,8 @@ class ReportFlow:
         step = Step(session["current_step"])
         if step == Step.AWAITING_LOCATION:
             await self._handle_location(update, session)
+        elif step == Step.MANUAL_STORE_SELECTION and _message_has_location(update):
+            await self._handle_location(update, session, allow_manual_store_selection=False)
         elif step == Step.AWAITING_PIN:
             await self._handle_pin(update, session)
         elif step in NUMERIC_STEP_FIELDS:
@@ -173,9 +177,14 @@ class ReportFlow:
         else:
             await self._send(update, "UNKNOWN_COMMAND")
 
-    async def _handle_location(self, update: Update, session: dict[str, Any]) -> None:
+    async def _handle_location(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        allow_manual_store_selection: bool = True,
+    ) -> None:
         text = _message_text(update)
-        if text is not None and await self._is_skip_answer(text):
+        if allow_manual_store_selection and text is not None and await self._is_manual_store_answer(text):
             await self._show_manual_store_selection(update, session)
             return
 
@@ -183,7 +192,8 @@ class ReportFlow:
             await self._send(
                 update,
                 "ASK_LOCATION",
-                reply_markup=await self._share_location_keyboard(),
+                manual_store_button=await self._manual_store_button_label(),
+                reply_markup=await self._start_location_keyboard(),
                 progress_step=Step.AWAITING_LOCATION,
             )
             return
@@ -237,11 +247,16 @@ class ReportFlow:
         await self._send(
             update,
             "LOCATION_NOT_FOUND",
-            reply_markup=store_list_keyboard(
-                match.candidates,
-                await self._candidate_button_labels(match.candidates),
-            ),
+            reply_markup=await self._retry_location_keyboard(),
             progress_step=Step.MANUAL_STORE_SELECTION,
+        )
+        await self._show_manual_store_selection(
+            update,
+            {
+                **session,
+                "current_step": Step.MANUAL_STORE_SELECTION.value,
+                "draft_report": draft,
+            },
         )
 
     async def _handle_pin(self, update: Update, session: dict[str, Any]) -> None:
@@ -851,11 +866,21 @@ class ReportFlow:
         await self._refresh_templates()
         return self._templates.render_location_status(status)
 
-    async def _share_location_keyboard(self):
+    async def _manual_store_button_label(self) -> str:
         await self._refresh_templates()
-        return share_location_keyboard(
+        return self._templates.render("BUTTON_SELECT_STORE_MANUAL")
+
+    async def _start_location_keyboard(self):
+        await self._refresh_templates()
+        return start_location_keyboard(
             self._templates.render("BUTTON_SHARE_LOCATION"),
-            self._templates.render("BUTTON_SKIP"),
+            self._templates.render("BUTTON_SELECT_STORE_MANUAL"),
+        )
+
+    async def _retry_location_keyboard(self):
+        await self._refresh_templates()
+        return retry_location_keyboard(
+            self._templates.render("BUTTON_SHARE_LOCATION"),
         )
 
     async def _confirm_store_keyboard(self):
@@ -1014,9 +1039,9 @@ class ReportFlow:
         await self._refresh_templates()
         return text.strip().casefold() == self._templates.render("BUTTON_NONE").casefold()
 
-    async def _is_skip_answer(self, text: str) -> bool:
+    async def _is_manual_store_answer(self, text: str) -> bool:
         await self._refresh_templates()
-        return text.strip().casefold() == self._templates.render("BUTTON_SKIP").casefold()
+        return text.strip().casefold() == self._templates.render("BUTTON_SELECT_STORE_MANUAL").casefold()
 
     async def _ensure_private(self, update: Update) -> bool:
         if update.effective_chat.type == ChatType.PRIVATE:
@@ -1056,3 +1081,7 @@ def _message_text(update: Update) -> str | None:
     if update.message is None or update.message.text is None:
         return None
     return update.message.text
+
+
+def _message_has_location(update: Update) -> bool:
+    return update.message is not None and update.message.location is not None

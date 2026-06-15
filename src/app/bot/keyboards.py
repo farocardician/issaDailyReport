@@ -5,11 +5,21 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton,
 from app.domain.store_matching import StoreCandidate, StoreLocation
 
 
-def share_location_keyboard(location_label: str, skip_label: str) -> ReplyKeyboardMarkup:
+def start_location_keyboard(location_label: str, manual_store_label: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton(location_label, request_location=True)],
-            [skip_label],
+            [manual_store_label],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def retry_location_keyboard(location_label: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton(location_label, request_location=True)],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,

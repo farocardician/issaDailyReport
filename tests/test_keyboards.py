@@ -1,13 +1,21 @@
-from app.bot.keyboards import share_location_keyboard, stock_issue_detail_keyboard
+from app.bot.keyboards import retry_location_keyboard, start_location_keyboard, stock_issue_detail_keyboard
 
 
-def test_share_location_keyboard_includes_skip_option_on_second_row() -> None:
-    keyboard = share_location_keyboard("Bagikan Lokasi", "Lewati").to_dict()
+def test_start_location_keyboard_includes_manual_store_button() -> None:
+    keyboard = start_location_keyboard("Bagikan Lokasi", "Pilih Toko Manual").to_dict()
 
     assert keyboard["keyboard"] == [
         [{"request_location": True, "text": "Bagikan Lokasi"}],
-        [{"text": "Lewati"}],
+        [{"text": "Pilih Toko Manual"}],
     ]
+    assert all(button["text"] != "Lewati" for row in keyboard["keyboard"] for button in row)
+
+
+def test_retry_location_keyboard_only_shows_share_location() -> None:
+    keyboard = retry_location_keyboard("Bagikan Lokasi").to_dict()
+
+    assert keyboard["keyboard"] == [[{"request_location": True, "text": "Bagikan Lokasi"}]]
+    assert all(button["text"] != "Lewati" for row in keyboard["keyboard"] for button in row)
 
 
 def test_stock_issue_detail_keyboard_uses_context_continue_not_done() -> None:
