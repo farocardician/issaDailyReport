@@ -26,6 +26,16 @@ def retry_location_keyboard(location_label: str) -> ReplyKeyboardMarkup:
     )
 
 
+def activation_contact_keyboard(share_label: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton(share_label, request_contact=True)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 def start_again_keyboard(start_label: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [[start_label]],
@@ -191,4 +201,3 @@ def stock_issue_keyboard(
     if next_label is not None:
         rows.append([InlineKeyboardButton(next_label, callback_data="stock_issue:continue")])
     return InlineKeyboardMarkup(rows)
-

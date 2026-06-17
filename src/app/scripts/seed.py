@@ -14,10 +14,13 @@ DEPRECATED_UI_TRANSLATE_KEYS = (
     "ASK_ORDER",
     "ASK_PIECES",
     "ASK_NO_BUY_REASON",
+    "ASK_PIN",
+    "PIN_INVALID",
     "PROGRESS_PHASE_TRAFFIC",
     "PROGRESS_PHASE_GMV_OFFLINE",
     "PROGRESS_PHASE_GMV_ONLINE",
     "PROGRESS_PHASE_ORDER_PIECES",
+    "PROGRESS_PHASE_PIN",
     "BUTTON_SALES_DONE",
     "STOCK_ISSUE_OPTION_SIZE_EMPTY",
     "STOCK_ISSUE_OPTION_COLOR_EMPTY",
@@ -101,18 +104,17 @@ async def seed_users(pool) -> None:
             await connection.execute(
                 """
                 INSERT INTO users (
-                    user_id, role, name, phone, email, pin, telegram_user_id,
+                    user_id, role, name, phone, email, telegram_user_id,
                     telegram_chat_id, status, notes
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (user_id) DO UPDATE
                 SET role = EXCLUDED.role,
                     name = EXCLUDED.name,
                     phone = EXCLUDED.phone,
                     email = EXCLUDED.email,
-                    pin = EXCLUDED.pin,
-                    telegram_user_id = EXCLUDED.telegram_user_id,
-                    telegram_chat_id = EXCLUDED.telegram_chat_id,
+                    telegram_user_id = COALESCE(EXCLUDED.telegram_user_id, users.telegram_user_id),
+                    telegram_chat_id = COALESCE(EXCLUDED.telegram_chat_id, users.telegram_chat_id),
                     status = EXCLUDED.status,
                     notes = EXCLUDED.notes
                 """,
@@ -121,7 +123,6 @@ async def seed_users(pool) -> None:
                 row["User_Name"],
                 _blank_to_none(row["User_Phone"]),
                 _blank_to_none(row["User_Email"]),
-                row["User_PIN"],
                 _int_or_none(row["Telegram_User_ID"]),
                 _int_or_none(row["Telegram_Chat_ID"]),
                 row["Status"],
@@ -238,6 +239,8 @@ def _template_category(key: str) -> str:
         return "sales"
     if key.startswith("STOCK_ISSUE_"):
         return "stock_issue"
+    if key.startswith("ACTIVATION_"):
+        return "activation"
     if key.startswith("STORE_"):
         return "store_display"
     if key.startswith("AREA_"):

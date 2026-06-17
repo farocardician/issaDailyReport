@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-Dockerized Python 3.12 Telegram bot for daily per-store SPG (Sales Promotion) reports. An SPG shares their location, confirms the store, enters a PIN, answers a guided sequence of sales questions, reviews a summary, and submits. Submitting notifies an admin chat. Stack: `python-telegram-bot` (async, v21), PostgreSQL 16 via `asyncpg`, DB-backed Bahasa Indonesia UI text, and a Cloudflare named tunnel for webhook delivery.
+Dockerized Python 3.12 Telegram bot for daily per-store SPG (Sales Promotion) reports. An SPG activates Telegram access by sharing their registered phone contact, shares their location, confirms the store, answers a guided sequence of sales questions, reviews a summary, and submits. Submitting notifies an admin chat. Stack: `python-telegram-bot` (async, v21), PostgreSQL 16 via `asyncpg`, DB-backed Bahasa Indonesia UI text, and a Cloudflare named tunnel for webhook delivery.
 
 ## Commands (Docker-first)
 
@@ -37,10 +37,12 @@ When adding behavior, decide which layer owns it: **state transitions belong in 
 
 `bot_sessions.current_step` stores a `Step` enum value (`domain/session_state.py`). Sessions are keyed by `telegram_chat_id`, carry a JSONB `draft_report`, and expire after `SESSION_TTL_MINUTES` (checked in `flow._load_session_or_notify`).
 
-Happy path:
-`START → AWAITING_LOCATION → (CONFIRM_STORE | CHOOSE_STORE | MANUAL_STORE_SELECTION) → AWAITING_PIN → ASK_SALES_SOURCES → ASK_SALES_INPUT → REVIEW_SALES_SUMMARY → ASK_STOCK_ISSUE → ASK_NOTE → REVIEW_SUMMARY → (CONFIRM_DUPLICATE?) → DONE`
+Activation is a pre-flow gate. `/start` looks for exactly one active user linked to the Telegram user id. If none is linked, the session enters `AWAITING_PHONE` and asks the user to share their own Telegram contact; the phone is matched against active `users.phone` rows before binding Telegram ids.
 
-The **sales sub-flow** (step 3 of 6, "Sumber Penjualan") replaces the old fixed traffic/GMV numeric questions:
+Report happy path:
+`START → AWAITING_LOCATION → (CONFIRM_STORE | CHOOSE_STORE | MANUAL_STORE_SELECTION) → ASK_SALES_SOURCES → ASK_SALES_INPUT → REVIEW_SALES_SUMMARY → ASK_STOCK_ISSUE → ASK_NOTE → REVIEW_SUMMARY → (CONFIRM_DUPLICATE?) → DONE`
+
+The **sales sub-flow** (step 2 of 5, "Sumber Penjualan") replaces the old fixed traffic/GMV numeric questions:
 - `ASK_SALES_SOURCES` — inline multi-select of configurable sources from `gmv_sources`. When nothing is selected it shows `Tidak Ada Penjualan`; after a source is selected that button is hidden and the continue button becomes `Lanjut input {{source}}`.
 - `ASK_SALES_INPUT` — one step that loops `(source, field)` per `domain.sales_sources.input_plan`. A source with `requires_traffic` asks traffic + GMV + order + pieces; others ask GMV + order + pieces. Position is tracked by `draft["sales_input_plan"]` / `sales_input_pos`; buttons are `Sebelumnya` and `Batal`.
 - `REVIEW_SALES_SUMMARY` — reply-keyboard summary (Lanjutkan / Ubah / Batal). `Ubah` opens `EDIT_SALES_MENU`: edit one source's fields, or "Tambah / Hapus Sumber Penjualan" (re-opens the picker preselected, collecting input only for newly-added sources).
@@ -49,7 +51,7 @@ Per-source values live in `draft["sales_data"]` (`{source_id: {label, source_typ
 
 Store matching (`domain/store_matching.py`): haversine distance vs. an *effective radius* (`store.allowed_radius_meter` or `DEFAULT_RADIUS_METER`; a non-positive radius falls back to default). Result is `SINGLE` (1 in range → confirm), `MULTIPLE` (>1 → pick from list), or `NONE` (0 → returns all active stores sorted by distance for manual selection). `location_status` is `in_radius` / `out_of_radius` / `manual_store_selection` (the last when distance is unknown).
 
-The **stock-issue sub-flow** (step 4 of 6, "Kendala Stok") mirrors the sales picker on a single `ASK_STOCK_ISSUE` step: an inline multi-select of configurable issues from `stock_issues`, with a live `Dipilih:` block, `Tidak Ada` shown only when nothing is selected, and a dynamic `Lanjut input {{issue}}` continue button. Continuing walks per-issue SKU-detail prompts (`stock_issue_detail_option_ids` / `stock_issue_detail_option_id` / `stock_issue_sku_details`, with labels snapshotted in `stock_issue_labels`). SKU-detail prompts use a reply keyboard with `Sebelumnya` and `Batal`; users type SKU values normally, or type `Tidak Ada` / `-` when there is no specific SKU. `Sebelumnya` steps back through issues and, from the first, back to the picker with selection preserved (still-selected SKUs kept, unselected dropped, only newly-added issues collected). `_save_stock_issue_and_continue` writes the formatted multi-line `stock_issue` text and advances to `ASK_NOTE` (step 5, "Catatan") — there is no stock-issue summary screen.
+The **stock-issue sub-flow** (step 3 of 5, "Kendala Stok") mirrors the sales picker on a single `ASK_STOCK_ISSUE` step: an inline multi-select of configurable issues from `stock_issues`, with a live `Dipilih:` block, `Tidak Ada` shown only when nothing is selected, and a dynamic `Lanjut input {{issue}}` continue button. Continuing walks per-issue SKU-detail prompts (`stock_issue_detail_option_ids` / `stock_issue_detail_option_id` / `stock_issue_sku_details`, with labels snapshotted in `stock_issue_labels`). SKU-detail prompts use a reply keyboard with `Sebelumnya` and `Batal`; users type SKU values normally, or type `Tidak Ada` / `-` when there is no specific SKU. `Sebelumnya` steps back through issues and, from the first, back to the picker with selection preserved (still-selected SKUs kept, unselected dropped, only newly-added issues collected). `_save_stock_issue_and_continue` writes the formatted multi-line `stock_issue` text and advances to `ASK_NOTE` (step 4, "Catatan") — there is no stock-issue summary screen.
 
 Duplicate handling: re-submitting the same `store_id` + `report_date` routes to `CONFIRM_DUPLICATE`; confirming writes a **second** `daily_reports` row with `submission_status = 'correction'` (vs. `'submitted'`). Cancelled sessions show a `Mulai` button to restart. Report IDs are `RPT-YYYYMMDD-HHMMSS-NNNN`, regenerated up to 10× on collision.
 
@@ -66,7 +68,7 @@ All user-facing strings — prompts, button labels, store/area/distance formats,
 
 There is no migration tool. `sql/schema.sql` **is** the migration and must stay idempotent and re-runnable: it uses `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` / `DROP COLUMN IF EXISTS`, and `DO $$ … $$` blocks (e.g. the `message_templates → ui_translate` rename). `db.bootstrap_schema` applies it on every bot startup and during seeding, then runs additional idempotent `ALTER`s (dropping NOT NULL on location columns, refreshing the `location_status` CHECK constraint). Any schema change must follow this idempotent, forward-only style.
 
-Tables: `stores`, `users` (holds PINs), `daily_reports` (header only — sales lives in the child table), `daily_report_sales` (one row per sales source, with snapshot columns), `gmv_sources` (configurable sales-source list; `requires_traffic`, `sort_order`, `status`; seeded from `Reference/gmv_sources.csv`), `stock_issues` (configurable stock-issue list; `sort_order`, `status`; seeded from `Reference/stock_issues.csv`), `bot_sessions`, `ui_translate`. Postgres is exposed only on `127.0.0.1:${POSTGRES_HOST_PORT}` (default `55432`) for local DB tools.
+Tables: `stores`, `users` (registered phone and Telegram activation links), `daily_reports` (header only — sales lives in the child table), `daily_report_sales` (one row per sales source, with snapshot columns), `gmv_sources` (configurable sales-source list; `requires_traffic`, `sort_order`, `status`; seeded from `Reference/gmv_sources.csv`), `stock_issues` (configurable stock-issue list; `sort_order`, `status`; seeded from `Reference/stock_issues.csv`), `bot_sessions`, `ui_translate`. Postgres is exposed only on `127.0.0.1:${POSTGRES_HOST_PORT}` (default `55432`) for local DB tools.
 
 ## Testing approach
 
@@ -78,5 +80,5 @@ Tables: `stores`, `users` (holds PINs), `daily_reports` (header only — sales l
 - Keep `domain/` free of Telegram and DB imports; keep SQL only in `repositories/`; keep orchestration only in `flow.py`.
 - Put step transitions in `domain/session_state.py`, not in `flow.py`.
 - Add/adjust user-facing copy via `ui_translate` + `Reference/ui_translate.csv`, preserving the Bahasa Indonesia flow.
-- `Reference/*.csv` are seed inputs the app never writes back to. `Reference/user_master.csv` contains PINs and is intentionally excluded from the repomix bundle — never add it to `repomix.config.json` includes.
-- Never commit `.env`, Telegram tokens, the Cloudflare tunnel token, PIN changes, or database dumps.
+- `Reference/*.csv` are seed inputs the app never writes back to. `Reference/user_master.csv` contains personal contact data and is intentionally excluded from the repomix bundle — never add it to `repomix.config.json` includes.
+- Never commit `.env`, Telegram tokens, the Cloudflare tunnel token, personal contact changes, or database dumps.

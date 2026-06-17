@@ -1,4 +1,5 @@
 from app.bot.keyboards import (
+    activation_contact_keyboard,
     retry_location_keyboard,
     sales_edit_menu_keyboard,
     sales_input_navigation_keyboard,
@@ -25,6 +26,12 @@ def test_retry_location_keyboard_only_shows_share_location() -> None:
 
     assert keyboard["keyboard"] == [[{"request_location": True, "text": "Bagikan Lokasi"}]]
     assert all(button["text"] != "Lewati" for row in keyboard["keyboard"] for button in row)
+
+
+def test_activation_contact_keyboard_requests_contact() -> None:
+    keyboard = activation_contact_keyboard("Bagikan Nomor HP").to_dict()
+
+    assert keyboard["keyboard"] == [[{"request_contact": True, "text": "Bagikan Nomor HP"}]]
 
 
 def test_start_again_keyboard() -> None:

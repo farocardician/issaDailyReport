@@ -6,7 +6,7 @@ def register_handlers(application) -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
     application.add_handler(CallbackQueryHandler(callback_query))
-    application.add_handler(MessageHandler(filters.LOCATION | filters.TEXT, inbound_message))
+    application.add_handler(MessageHandler(filters.LOCATION | filters.TEXT | filters.CONTACT, inbound_message))
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

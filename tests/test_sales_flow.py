@@ -289,7 +289,6 @@ def _templates() -> dict[str, str]:
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "CONTEXTUAL_STEP_FORMAT": "{{label}} {{current}}/{{total}} · {{title}}",
         "PROGRESS_PHASE_STORE": "Pilih Toko",
-        "PROGRESS_PHASE_PIN": "Verifikasi PIN",
         "PROGRESS_PHASE_SALES": "Sumber Penjualan",
         "PROGRESS_PHASE_STOCK_ISSUE": "Kendala Stok",
         "PROGRESS_PHASE_NOTE": "Catatan",

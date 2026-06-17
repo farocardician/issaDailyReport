@@ -9,6 +9,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from app.bot.keyboards import (
+    activation_contact_keyboard,
     confirm_store_keyboard,
     duplicate_keyboard,
     manual_store_list_keyboard,
@@ -43,6 +44,11 @@ from app.bot.stock_issue_text import (
     sku_list_text,
 )
 from app.config import Settings
+from app.domain.activation import (
+    ActivationOutcome,
+    decide_activation,
+    match_active_users_by_phone,
+)
 from app.domain.geo import haversine_meters
 from app.domain.report import build_summary, generate_report_id, location_status
 from app.domain.sales_sources import GmvSource, input_plan, source_fields
@@ -98,14 +104,16 @@ class ReportFlow:
         if not await self._ensure_private(update):
             return
         await self._sessions.delete(update.effective_chat.id)
-        await self._persist(update, Step.AWAITING_LOCATION, {})
-        await self._send(
-            update,
-            "START",
-            manual_store_button=await self._manual_store_button_label(),
-            reply_markup=await self._start_location_keyboard(),
-            progress_step=Step.AWAITING_LOCATION,
+        users = await self._users.find_active_by_telegram_user_id(
+            update.effective_user.id,
+            self._settings.active_status,
         )
+        if len(users) == 1:
+            await self._start_report_flow(update, users[0])
+            return
+
+        await self._persist(update, Step.AWAITING_PHONE, {})
+        await self._send_activation_contact_prompt(update)
 
     async def handle_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._ensure_private(update):
@@ -126,12 +134,12 @@ class ReportFlow:
             return
 
         step = Step(session["current_step"])
-        if step == Step.AWAITING_LOCATION:
+        if step == Step.AWAITING_PHONE:
+            await self._handle_phone_contact(update, session)
+        elif step == Step.AWAITING_LOCATION:
             await self._handle_location(update, session)
         elif step == Step.MANUAL_STORE_SELECTION and _message_has_location(update):
             await self._handle_location(update, session, allow_manual_store_selection=False)
-        elif step == Step.AWAITING_PIN:
-            await self._handle_pin(update, session)
         elif step == Step.ASK_SALES_SOURCES:
             await self._send_sales_sources_prompt(update, dict(session["draft_report"]))
         elif step == Step.ASK_SALES_INPUT:
@@ -188,6 +196,63 @@ class ReportFlow:
         else:
             await self._send(update, "UNKNOWN_COMMAND")
 
+    async def _start_report_flow(self, update: Update, user: dict[str, Any]) -> None:
+        await self._persist(
+            update,
+            Step.AWAITING_LOCATION,
+            {"user_name": user["name"]},
+            user_id=user["user_id"],
+        )
+        await self._send(
+            update,
+            "START",
+            manual_store_button=await self._manual_store_button_label(),
+            reply_markup=await self._start_location_keyboard(),
+            progress_step=Step.AWAITING_LOCATION,
+        )
+
+    async def _handle_phone_contact(self, update: Update, session: dict[str, Any]) -> None:
+        if update.message is None or update.message.contact is None:
+            await self._send_activation_contact_prompt(update)
+            return
+
+        contact = update.message.contact
+        if contact.user_id != update.effective_user.id:
+            await self._send(
+                update,
+                "ACTIVATION_NOT_OWN_CONTACT",
+                reply_markup=await self._activation_contact_keyboard(),
+            )
+            return
+
+        active_users = await self._users.list_active(self._settings.active_status)
+        matches = match_active_users_by_phone(active_users, contact.phone_number)
+        result = decide_activation(update.effective_user.id, matches)
+
+        if result.outcome == ActivationOutcome.ACTIVATED and result.user is not None:
+            await self._users.bind_telegram(
+                result.user["user_id"],
+                update.effective_user.id,
+                update.effective_chat.id,
+            )
+            await self._send(
+                update,
+                "ACTIVATION_SUCCESS",
+                user_name=result.user["name"],
+            )
+            await self._start_report_flow(update, result.user)
+            return
+
+        if result.outcome == ActivationOutcome.ALREADY_LINKED and result.user is not None:
+            await self._start_report_flow(update, result.user)
+            return
+
+        await self._send(
+            update,
+            "ACTIVATION_FAILED",
+            reply_markup=await self._activation_contact_keyboard(),
+        )
+
     async def _handle_location(
         self,
         update: Update,
@@ -227,7 +292,7 @@ class ReportFlow:
         if match.match_type == MatchType.SINGLE:
             candidate = match.candidates[0]
             draft["proposed_store_id"] = candidate.store.store_id
-            await self._persist(update, Step.CONFIRM_STORE, draft)
+            await self._persist(update, Step.CONFIRM_STORE, draft, user_id=session["user_id"])
             await self._send(
                 update,
                 "STORE_CONFIRMATION",
@@ -240,7 +305,7 @@ class ReportFlow:
 
         if match.match_type == MatchType.MULTIPLE:
             await self._refresh_templates()
-            await self._persist(update, Step.CHOOSE_STORE, draft)
+            await self._persist(update, Step.CHOOSE_STORE, draft, user_id=session["user_id"])
             await self._send(
                 update,
                 "MULTIPLE_STORES_FOUND",
@@ -254,7 +319,7 @@ class ReportFlow:
             )
             return
 
-        await self._persist(update, Step.MANUAL_STORE_SELECTION, draft)
+        await self._persist(update, Step.MANUAL_STORE_SELECTION, draft, user_id=session["user_id"])
         reply_markup = manual_store_list_keyboard(
             [candidate.store for candidate in match.candidates],
             await self._store_labels([candidate.store for candidate in match.candidates]),
@@ -265,30 +330,6 @@ class ReportFlow:
             reply_markup=reply_markup,
             progress_step=Step.MANUAL_STORE_SELECTION,
         )
-
-    async def _handle_pin(self, update: Update, session: dict[str, Any]) -> None:
-        text = _message_text(update)
-        if text is None:
-            await self._send(update, "ASK_PIN", progress_step=Step.AWAITING_PIN)
-            return
-
-        users = await self._users.find_active_by_pin(text.strip(), self._settings.active_status)
-        if len(users) != 1:
-            await self._send(update, "PIN_INVALID")
-            return
-
-        user = users[0]
-        await self._users.bind_telegram(user["user_id"], update.effective_user.id, update.effective_chat.id)
-        draft = dict(session["draft_report"])
-        draft["user_name"] = user["name"]
-        await self._persist(
-            update,
-            Step.ASK_SALES_SOURCES,
-            draft,
-            selected_store_id=session["selected_store_id"],
-            user_id=user["user_id"],
-        )
-        await self._send_sales_sources_prompt(update, draft)
 
     async def _handle_sales_sources_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
         draft = dict(session["draft_report"])
@@ -842,12 +883,12 @@ class ReportFlow:
         draft["effective_radius_meter"] = effective_radius
         await self._persist(
             update,
-            Step.AWAITING_PIN,
+            Step.ASK_SALES_SOURCES,
             draft,
             selected_store_id=store_id,
             user_id=session["user_id"],
         )
-        await self._send(update, "ASK_PIN", reply_markup=ReplyKeyboardRemove(), progress_step=Step.AWAITING_PIN)
+        await self._send_sales_sources_prompt(update, draft)
 
     async def _send_summary(self, update: Update, draft: dict[str, Any], selected_store_id: str) -> None:
         store = await self._stores.get_by_id(selected_store_id)
@@ -1066,7 +1107,13 @@ class ReportFlow:
     async def _show_manual_store_selection(self, update: Update, session: dict[str, Any]) -> None:
         draft = dict(session["draft_report"])
         has_submitted_location = "submitted_latitude" in draft and "submitted_longitude" in draft
-        await self._persist(update, Step.MANUAL_STORE_SELECTION, draft)
+        await self._persist(
+            update,
+            Step.MANUAL_STORE_SELECTION,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
         if has_submitted_location:
             candidates = await self._all_active_candidates_from_draft(draft)
             reply_markup = store_list_keyboard(candidates, await self._candidate_button_labels(candidates))
@@ -1310,6 +1357,20 @@ class ReportFlow:
         await self._refresh_templates()
         return retry_location_keyboard(
             self._templates.render("BUTTON_SHARE_LOCATION"),
+        )
+
+    async def _activation_contact_keyboard(self):
+        await self._refresh_templates()
+        return activation_contact_keyboard(
+            self._templates.render("BUTTON_SHARE_CONTACT"),
+        )
+
+    async def _send_activation_contact_prompt(self, update: Update) -> None:
+        await self._send(
+            update,
+            "ACTIVATION_ASK_CONTACT",
+            share_contact_button=self._templates.render("BUTTON_SHARE_CONTACT"),
+            reply_markup=await self._activation_contact_keyboard(),
         )
 
     async def _start_again_keyboard(self):

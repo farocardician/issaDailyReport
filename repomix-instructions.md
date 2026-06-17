@@ -11,6 +11,6 @@ Important project rules:
 - Keep SQL access in `src/app/repositories/`.
 - Keep Telegram orchestration in `src/app/bot/flow.py`.
 - Preserve the Bahasa Indonesia message flow from `Reference/message_template.csv`.
-- Do not commit real `.env` values, Telegram tokens, Cloudflare tunnel tokens, PIN changes, or production database dumps.
-- `Reference/user_master.csv` is intentionally omitted from the Repomix handoff because it can contain PINs and personal contact data. Use `src/app/scripts/seed.py` and `sql/schema.sql` for the user CSV shape.
+- Do not commit real `.env` values, Telegram tokens, Cloudflare tunnel tokens, personal contact changes, or production database dumps.
+- `Reference/user_master.csv` is intentionally omitted from the Repomix handoff because it can contain personal contact data. Use `src/app/scripts/seed.py` and `sql/schema.sql` for the user CSV shape.
 - For verification, run `make test` and, when database behavior changes, run `make seed` against the Docker Compose database.

@@ -22,6 +22,7 @@ def test_start_screen_uses_manual_store_button_not_skip() -> None:
     asyncio.run(flow.handle_start(update, SimpleNamespace()))
 
     assert sessions.upserts[-1]["current_step"] == Step.AWAITING_LOCATION
+    assert sessions.upserts[-1]["user_id"] == "USR-1"
     assert "START Pilih Toko Manual" in chat.sent_messages[0]["text"]
     assert "Lewati" not in chat.sent_messages[0]["text"]
     assert chat.sent_messages[0]["reply_markup"].to_dict()["keyboard"] == [
@@ -41,6 +42,7 @@ def test_retry_location_during_manual_selection_re_runs_store_matching() -> None
     asyncio.run(flow.handle_message(update, SimpleNamespace()))
 
     assert sessions.upserts[-1]["current_step"] == Step.CONFIRM_STORE
+    assert sessions.upserts[-1]["user_id"] == "USR-1"
     assert any("STORE_CONFIRMATION" in message["text"] for message in chat.sent_messages)
     assert all("UNKNOWN_COMMAND" not in message["text"] for message in chat.sent_messages)
 
@@ -56,6 +58,7 @@ def test_location_not_found_sends_one_manual_store_selection_message() -> None:
     asyncio.run(flow.handle_message(update, SimpleNamespace()))
 
     assert sessions.upserts[-1]["current_step"] == Step.MANUAL_STORE_SELECTION
+    assert sessions.upserts[-1]["user_id"] == "USR-1"
     assert len(chat.sent_messages) == 1
     assert "LOCATION_NOT_FOUND" in chat.sent_messages[0]["text"]
     assert chat.sent_messages[0]["reply_markup"].to_dict()["inline_keyboard"] == [
@@ -88,7 +91,7 @@ def _flow_with_stores(stores: list[StoreLocation]) -> tuple[ReportFlow, "_FakeCh
         stores=_FakeStores(stores),
         sales_sources=SimpleNamespace(),
         stock_issues=SimpleNamespace(),
-        users=SimpleNamespace(),
+        users=_FakeUsers([_user()]),
         reports=SimpleNamespace(),
         sessions=sessions,
     )
@@ -177,11 +180,11 @@ class _FakeSessions:
     def __init__(self) -> None:
         self.upserts: list[dict[str, Any]] = []
         self._session: dict[str, Any] = {
-            "current_step": Step.MANUAL_STORE_SELECTION.value,
-            "draft_report": {},
-            "selected_store_id": None,
-            "user_id": None,
-            "expires_at": datetime.now(UTC) + timedelta(minutes=30),
+        "current_step": Step.MANUAL_STORE_SELECTION.value,
+        "draft_report": {},
+        "selected_store_id": None,
+        "user_id": "USR-1",
+        "expires_at": datetime.now(UTC) + timedelta(minutes=30),
         }
 
     async def get(self, telegram_chat_id: int) -> dict[str, Any]:
@@ -210,6 +213,36 @@ class _FakeChat:
 
     async def send_message(self, **message: Any) -> None:
         self.sent_messages.append(message)
+
+
+def _user() -> dict[str, Any]:
+    return {
+        "user_id": "USR-1",
+        "role": "SPG",
+        "name": "Ani",
+        "phone": "081280003276",
+        "email": None,
+        "telegram_user_id": 7,
+        "telegram_chat_id": 99,
+        "status": "Aktif",
+        "notes": None,
+    }
+
+
+class _FakeUsers:
+    def __init__(self, users: list[dict[str, Any]]) -> None:
+        self._users = users
+
+    async def find_active_by_telegram_user_id(
+        self,
+        telegram_user_id: int,
+        active_status: str,
+    ) -> list[dict[str, Any]]:
+        return [
+            user
+            for user in self._users
+            if user["telegram_user_id"] == telegram_user_id and user["status"] == active_status
+        ]
 
 
 class _FakeUpdate:

@@ -5,8 +5,10 @@ LOCATION_NOT_FOUND,{{progress}}\n\nSaya belum bisa memastikan toko dari lokasi i
 STORE_CONFIRMATION,{{progress}}\n\nSaya menemukan toko terdekat:\n\n<b>{{store_label}}</b>\n\nJarak kamu sekitar <b>{{distance_meter}}</b> dari toko.\n\nApakah benar ini toko yang mau dilaporkan?
 MULTIPLE_STORES_FOUND,{{progress}}\n\nKamu sepertinya berada di area:\n\n<b>{{area_label}}</b>\n\nPilih toko yang mau dilaporkan:
 MANUAL_STORE_SELECTION,{{progress}}\n\nSilakan pilih toko yang mau dilaporkan:
-ASK_PIN,{{progress}}\n\nMasukkan PIN kamu untuk lanjut.
-PIN_INVALID,PIN belum cocok. Silakan coba lagi.
+ACTIVATION_ASK_CONTACT,"Halo 👋\n\nUntuk mengaktifkan akun Telegram kamu, tekan tombol <b>{{share_contact_button}}</b> untuk bagikan nomor HP terdaftar kamu."
+ACTIVATION_SUCCESS,"✅ Akun kamu berhasil diaktifkan. Selamat datang, {{user_name}}!"
+ACTIVATION_FAILED,Nomor HP kamu belum bisa diaktifkan. Silakan hubungi admin untuk bantuan.
+ACTIVATION_NOT_OWN_CONTACT,Tolong bagikan nomor HP kamu sendiri lewat tombol di bawah ya.
 REPORT_ALREADY_EXISTS,{{progress}}\n\nLaporan untuk toko dan tanggal ini sudah ada.\n\nMau submit lagi sebagai koreksi?
 ASK_SALES_SOURCES,"{{progress}}\n\nPilih sumber penjualan hari ini.\n\n{{selected_sources}}\n\nPilih satu atau lebih sumber untuk lanjut input.\nKalau tidak ada penjualan, tekan <b>Tidak Ada Penjualan</b>."
 ASK_SALES_TRAFFIC,"{{progress}}\n{{source_progress}}\n\nBerapa jumlah traffic / pengunjung untuk <b>{{source}}</b> hari ini?\n\nKetik angka saja."
@@ -23,6 +25,7 @@ UNKNOWN_COMMAND,Saya belum mengerti pesan ini.\n\nKetik /start untuk mulai lapor
 SYSTEM_ERROR,"Maaf, sedang ada kendala sistem.\n\nSilakan coba lagi atau hubungi admin."
 SESSION_EXPIRED,Sesi sudah kedaluwarsa. Silakan kirim /start untuk mulai lagi.
 BUTTON_SHARE_LOCATION,Bagikan Lokasi
+BUTTON_SHARE_CONTACT,Bagikan Nomor HP
 BUTTON_START,Mulai
 BUTTON_SELECT_STORE_MANUAL,Pilih Toko Manual
 BUTTON_CONFIRM_YES,Ya
@@ -47,7 +50,6 @@ PROGRESS_MAIN_LABEL,Langkah
 PROGRESS_MAIN_FORMAT,{{label}} {{current}}/{{total}} · {{phase}}
 CONTEXTUAL_STEP_FORMAT,{{label}} {{current}}/{{total}} · {{title}}
 PROGRESS_PHASE_STORE,Pilih Toko
-PROGRESS_PHASE_PIN,Verifikasi PIN
 PROGRESS_PHASE_SALES,Sumber Penjualan
 PROGRESS_PHASE_STOCK_ISSUE,Kendala Stok
 PROGRESS_PHASE_NOTE,Catatan

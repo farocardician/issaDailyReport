@@ -17,12 +17,18 @@ CREATE TABLE IF NOT EXISTS users (
     name text NOT NULL,
     phone text,
     email text,
-    pin text NOT NULL,
     telegram_user_id bigint,
     telegram_chat_id bigint,
     status text NOT NULL,
     notes text
 );
+
+ALTER TABLE users
+    DROP COLUMN IF EXISTS pin;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_user_id
+    ON users(telegram_user_id)
+    WHERE telegram_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS gmv_sources (
     gmv_source_id text PRIMARY KEY,

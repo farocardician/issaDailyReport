@@ -1,6 +1,6 @@
 # SPG Daily Store Reporting Telegram Bot
 
-A Dockerized Telegram bot that lets in-store SPG (Sales Promotion) staff submit a daily sales report for their store in a few guided steps. The bot confirms the staff member's store by GPS location, verifies a PIN, walks them through a short set of questions, shows a summary to confirm, and notifies an admin chat once the report is submitted.
+A Dockerized Telegram bot that lets in-store SPG (Sales Promotion) staff submit a daily sales report for their store in a few guided steps. The bot activates staff by their registered phone contact, confirms the store by GPS location, walks them through a short set of questions, shows a summary to confirm, and notifies an admin chat once the report is submitted.
 
 **Built with:** Python 3.12 · [python-telegram-bot](https://python-telegram-bot.org/) (async) · PostgreSQL 16 · Docker Compose · Cloudflare Tunnel
 
@@ -30,16 +30,15 @@ A Dockerized Telegram bot that lets in-store SPG (Sales Promotion) staff submit 
 
 From the SPG's point of view, submitting a report looks like this:
 
-1. **Start** — DM the bot and send `/start`.
+1. **Start** — DM the bot and send `/start`. First-time users share their own registered phone contact to activate Telegram access.
 2. **Share location** — the bot matches GPS coordinates against active stores within an allowed radius.
    - One match → confirm the store.
    - Several matches → pick from a list.
    - No match → choose the store manually.
-3. **Enter PIN** — identifies the staff member.
-4. **Input sales by source** — choose sales sources such as Outlet, Whatsapp, Shopee, Tokopedia, Tiktok, or Website, then enter GMV, orders, pieces, and traffic where required.
-5. **Stock issues & note** — pick any stock problems, type the affected SKUs for each selected issue, or tap **Tidak Ada**, then add an optional note. On a SKU prompt, type **Tidak Ada** or `-` when there is no specific SKU.
-6. **Review & submit** — the bot shows a summary; the SPG confirms.
-7. **Admin notified** — a formatted summary is sent to the admin chat.
+3. **Input sales by source** — choose sales sources such as Outlet, Whatsapp, Shopee, Tokopedia, Tiktok, or Website, then enter GMV, orders, pieces, and traffic where required.
+4. **Stock issues & note** — pick any stock problems, type the affected SKUs for each selected issue, or tap **Tidak Ada**, then add an optional note. On a SKU prompt, type **Tidak Ada** or `-` when there is no specific SKU.
+5. **Review & submit** — the bot shows a summary; the SPG confirms.
+6. **Admin notified** — a formatted summary is sent to the admin chat.
 
 Submitting a report for a store/date that already has one is allowed: it is saved as a **correction** rather than overwriting the original. If the SPG cancels, the bot shows a **Mulai** button to start again.
 
@@ -164,9 +163,9 @@ Column reference:
 ## Testing the bot in Telegram
 
 1. DM the bot and send `/start`.
-2. Share your location.
-3. Confirm or choose the store.
-4. Enter PIN `123123` (the seeded test PIN).
+2. If prompted, share your own registered phone contact to activate access.
+3. Share your location.
+4. Confirm or choose the store.
 5. Choose sales sources and fill in each requested value.
 6. Pick any stock issues, type affected SKUs for each issue, or tap **Tidak Ada**. On a SKU prompt, type **Tidak Ada** or `-` if there is no specific SKU, then add a note.
 7. Submit.
@@ -229,7 +228,7 @@ Generate an AI-friendly bundle of the repository for bug fixing or feature work:
 make repomix
 ```
 
-This uses `repomix.config.json` and writes `repomix-output.xml` (ignored by git). `Reference/user_master.csv` is intentionally excluded because it can contain PINs and personal contact data.
+This uses `repomix.config.json` and writes `repomix-output.xml` (ignored by git). `Reference/user_master.csv` is intentionally excluded because it can contain personal contact data.
 
 ---
 

@@ -7,15 +7,31 @@ class UsersRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def find_active_by_pin(self, pin: str, active_status: str) -> list[dict[str, Any]]:
+    async def find_active_by_telegram_user_id(
+        self,
+        telegram_user_id: int,
+        active_status: str,
+    ) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """
-            SELECT user_id, role, name, phone, email, pin, telegram_user_id,
+            SELECT user_id, role, name, phone, email, telegram_user_id,
                    telegram_chat_id, status, notes
             FROM users
-            WHERE pin = $1 AND status = $2
+            WHERE telegram_user_id = $1 AND status = $2
             """,
-            pin,
+            telegram_user_id,
+            active_status,
+        )
+        return [dict(row) for row in rows]
+
+    async def list_active(self, active_status: str) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT user_id, role, name, phone, email, telegram_user_id,
+                   telegram_chat_id, status, notes
+            FROM users
+            WHERE status = $1
+            """,
             active_status,
         )
         return [dict(row) for row in rows]
