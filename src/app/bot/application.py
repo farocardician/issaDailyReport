@@ -7,7 +7,9 @@ from app.bot.handlers import register_handlers
 from app.config import Settings
 from app.db import bootstrap_schema, create_pool
 from app.repositories.reports import ReportsRepository
+from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
+from app.repositories.stock_issues import StockIssuesRepository
 from app.repositories.stores import StoresRepository
 from app.repositories.templates import TemplatesRepository
 from app.repositories.users import UsersRepository
@@ -27,6 +29,8 @@ def build_application(settings: Settings) -> Application:
             templates=templates,
             templates_repository=templates_repository,
             stores=StoresRepository(pool),
+            sales_sources=SalesSourcesRepository(pool),
+            stock_issues=StockIssuesRepository(pool),
             users=UsersRepository(pool),
             reports=ReportsRepository(pool),
             sessions=SessionsRepository(pool),

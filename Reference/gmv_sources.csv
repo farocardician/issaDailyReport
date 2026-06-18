@@ -1,0 +1,7 @@
+Gmv_Source_ID,Label,Source_Type,Requires_Traffic,Sort_Order,Status
+outlet,Outlet,outlet,true,1,Aktif
+whatsapp,Whatsapp,chat,false,2,Aktif
+shopee,Shopee,marketplace,false,3,Aktif
+tokopedia,Tokopedia,marketplace,false,4,Aktif
+tiktok,Tiktok,marketplace,false,5,Aktif
+website,Website,website,false,6,Aktif
