@@ -9,6 +9,10 @@ ACTIVATION_ASK_CONTACT,"Halo 👋\n\nUntuk mengaktifkan akun Telegram kamu, teka
 ACTIVATION_SUCCESS,"✅ Akun kamu berhasil diaktifkan. Selamat datang, {{user_name}}!"
 ACTIVATION_FAILED,Nomor HP kamu belum bisa diaktifkan. Silakan hubungi admin untuk bantuan.
 ACTIVATION_NOT_OWN_CONTACT,Tolong bagikan nomor HP kamu sendiri lewat tombol di bawah ya.
+MENU_ADMIN,"Menu Admin\n\nSilakan pilih menu:"
+MENU_SUPER_ADMIN,"Menu Super Admin\n\nSilakan pilih menu:"
+MENU_PLACEHOLDER,🚧 Fitur ini akan segera tersedia.
+MENU_ACCESS_DENIED,Kamu tidak punya akses untuk tindakan ini.
 REPORT_ALREADY_EXISTS,{{progress}}\n\nLaporan untuk toko dan tanggal ini sudah ada.\n\nMau submit lagi sebagai koreksi?
 ASK_SALES_SOURCES,"{{progress}}\n\nPilih sumber penjualan hari ini.\n\n{{selected_sources}}\n\nPilih satu atau lebih sumber untuk lanjut input.\nKalau tidak ada penjualan, tekan <b>Tidak Ada Penjualan</b>."
 ASK_SALES_TRAFFIC,"{{progress}}\n{{source_progress}}\n\nBerapa jumlah traffic / pengunjung untuk <b>{{source}}</b> hari ini?\n\nKetik angka saja."
@@ -28,6 +32,10 @@ BUTTON_SHARE_LOCATION,Bagikan Lokasi
 BUTTON_SHARE_CONTACT,Bagikan Nomor HP
 BUTTON_START,Mulai
 BUTTON_SELECT_STORE_MANUAL,Pilih Toko Manual
+BUTTON_MENU_INPUT_REPORT,Input Laporan Harian
+BUTTON_MENU_MANAGE_USERS,Kelola User
+BUTTON_MENU_MANAGE_ADMINS,Kelola Admin
+BUTTON_MENU_MANAGE_STORES,Kelola Store
 BUTTON_CONFIRM_YES,Ya
 BUTTON_OTHER_STORE,Pilih toko lain
 BUTTON_SUBMIT,Kirim

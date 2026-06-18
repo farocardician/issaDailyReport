@@ -1,5 +1,6 @@
 from app.bot.keyboards import (
     activation_contact_keyboard,
+    admin_menu_keyboard,
     retry_location_keyboard,
     sales_edit_menu_keyboard,
     sales_input_navigation_keyboard,
@@ -8,6 +9,7 @@ from app.bot.keyboards import (
     start_again_keyboard,
     start_location_keyboard,
     stock_issue_keyboard,
+    super_admin_menu_keyboard,
 )
 
 
@@ -32,6 +34,31 @@ def test_activation_contact_keyboard_requests_contact() -> None:
     keyboard = activation_contact_keyboard("Bagikan Nomor HP").to_dict()
 
     assert keyboard["keyboard"] == [[{"request_contact": True, "text": "Bagikan Nomor HP"}]]
+
+
+def test_admin_menu_keyboard() -> None:
+    keyboard = admin_menu_keyboard("Input Laporan Harian", "Kelola User").to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "menu:report", "text": "Input Laporan Harian"}],
+        [{"callback_data": "menu:users", "text": "Kelola User"}],
+    ]
+
+
+def test_super_admin_menu_keyboard() -> None:
+    keyboard = super_admin_menu_keyboard(
+        "Input Laporan Harian",
+        "Kelola User",
+        "Kelola Admin",
+        "Kelola Store",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "menu:report", "text": "Input Laporan Harian"}],
+        [{"callback_data": "menu:users", "text": "Kelola User"}],
+        [{"callback_data": "menu:admins", "text": "Kelola Admin"}],
+        [{"callback_data": "menu:stores", "text": "Kelola Store"}],
+    ]
 
 
 def test_start_again_keyboard() -> None:

@@ -36,6 +36,31 @@ def activation_contact_keyboard(share_label: str) -> ReplyKeyboardMarkup:
     )
 
 
+def admin_menu_keyboard(report_label: str, users_label: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(report_label, callback_data="menu:report")],
+            [InlineKeyboardButton(users_label, callback_data="menu:users")],
+        ]
+    )
+
+
+def super_admin_menu_keyboard(
+    report_label: str,
+    users_label: str,
+    admins_label: str,
+    stores_label: str,
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(report_label, callback_data="menu:report")],
+            [InlineKeyboardButton(users_label, callback_data="menu:users")],
+            [InlineKeyboardButton(admins_label, callback_data="menu:admins")],
+            [InlineKeyboardButton(stores_label, callback_data="menu:stores")],
+        ]
+    )
+
+
 def start_again_keyboard(start_label: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [[start_label]],

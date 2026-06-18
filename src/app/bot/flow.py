@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 
 from app.bot.keyboards import (
     activation_contact_keyboard,
+    admin_menu_keyboard,
     confirm_store_keyboard,
     duplicate_keyboard,
     manual_store_list_keyboard,
@@ -23,6 +24,7 @@ from app.bot.keyboards import (
     stock_issue_keyboard,
     start_location_keyboard,
     store_list_keyboard,
+    super_admin_menu_keyboard,
     summary_keyboard,
 )
 from app.bot.notifications import send_admin_notification
@@ -51,6 +53,13 @@ from app.domain.activation import (
 )
 from app.domain.geo import haversine_meters
 from app.domain.report import build_summary, generate_report_id, location_status
+from app.domain.roles import (
+    can_manage_admins,
+    can_manage_stores,
+    can_manage_users,
+    menu_step_for_role,
+    normalize_role,
+)
 from app.domain.sales_sources import GmvSource, input_plan, source_fields
 from app.domain.session_state import Step, next_step
 from app.domain.stock_issues import StockIssue
@@ -109,7 +118,7 @@ class ReportFlow:
             self._settings.active_status,
         )
         if len(users) == 1:
-            await self._start_report_flow(update, users[0])
+            await self._route_after_auth(update, users[0])
             return
 
         await self._persist(update, Step.AWAITING_PHONE, {})
@@ -193,8 +202,22 @@ class ReportFlow:
             await self._save_and_complete(update, context, session, "correction")
         elif step == Step.CONFIRM_DUPLICATE and data == "duplicate:cancel":
             await self._cancel(update)
+        elif step == Step.ADMIN_MENU:
+            await self._handle_admin_menu_callback(update, session, data)
+        elif step == Step.SUPER_ADMIN_MENU:
+            await self._handle_super_admin_menu_callback(update, session, data)
         else:
             await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _route_after_auth(self, update: Update, user: dict[str, Any]) -> None:
+        role = normalize_role(user.get("role"))
+        step = menu_step_for_role(role)
+        if step is None:
+            await self._start_report_flow(update, user)
+            return
+
+        await self._persist(update, step, {"user_name": user["name"]}, user_id=user["user_id"])
+        await self._send_menu(update, step)
 
     async def _start_report_flow(self, update: Update, user: dict[str, Any]) -> None:
         await self._persist(
@@ -240,11 +263,11 @@ class ReportFlow:
                 "ACTIVATION_SUCCESS",
                 user_name=result.user["name"],
             )
-            await self._start_report_flow(update, result.user)
+            await self._route_after_auth(update, result.user)
             return
 
         if result.outcome == ActivationOutcome.ALREADY_LINKED and result.user is not None:
-            await self._start_report_flow(update, result.user)
+            await self._route_after_auth(update, result.user)
             return
 
         await self._send(
@@ -1027,6 +1050,84 @@ class ReportFlow:
             progress_step=Step.EDIT_SALES_MENU,
         )
 
+    async def _send_menu(self, update: Update, step: Step) -> None:
+        if step == Step.ADMIN_MENU:
+            await self._send(update, "MENU_ADMIN", reply_markup=await self._admin_menu_keyboard())
+            return
+        if step == Step.SUPER_ADMIN_MENU:
+            await self._send(update, "MENU_SUPER_ADMIN", reply_markup=await self._super_admin_menu_keyboard())
+            return
+        await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _current_actor(self, update: Update) -> dict[str, Any] | None:
+        users = await self._users.find_active_by_telegram_user_id(
+            update.effective_user.id,
+            self._settings.active_status,
+        )
+        if len(users) != 1:
+            return None
+        return users[0]
+
+    async def _handle_admin_menu_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        actor = await self._current_actor(update)
+        if actor is None:
+            await self._send(update, "MENU_ACCESS_DENIED")
+            return
+
+        role = normalize_role(actor.get("role"))
+        if data == "menu:report":
+            await self._start_report_flow(update, actor)
+            return
+        if data == "menu:users":
+            if not can_manage_users(role):
+                await self._send(update, "MENU_ACCESS_DENIED")
+                return
+            await self._send(update, "MENU_PLACEHOLDER")
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _handle_super_admin_menu_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        actor = await self._current_actor(update)
+        if actor is None:
+            await self._send(update, "MENU_ACCESS_DENIED")
+            return
+
+        role = normalize_role(actor.get("role"))
+        if data == "menu:report":
+            await self._start_report_flow(update, actor)
+            return
+        if data == "menu:users":
+            if not can_manage_users(role):
+                await self._send(update, "MENU_ACCESS_DENIED")
+                return
+            await self._send(update, "MENU_PLACEHOLDER")
+            return
+        if data == "menu:admins":
+            if not can_manage_admins(role):
+                await self._send(update, "MENU_ACCESS_DENIED")
+                return
+            await self._send(update, "MENU_PLACEHOLDER")
+            return
+        if data == "menu:stores":
+            if not can_manage_stores(role):
+                await self._send(update, "MENU_ACCESS_DENIED")
+                return
+            await self._send(update, "MENU_PLACEHOLDER")
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
+
     async def _sales_source_selected_text(self, draft: dict[str, Any]) -> str:
         selected_ids = list(draft.get("sales_source_ids", []))
         active_sources = {source.gmv_source_id: source for source in await self._active_sales_sources()}
@@ -1363,6 +1464,22 @@ class ReportFlow:
         await self._refresh_templates()
         return activation_contact_keyboard(
             self._templates.render("BUTTON_SHARE_CONTACT"),
+        )
+
+    async def _admin_menu_keyboard(self):
+        await self._refresh_templates()
+        return admin_menu_keyboard(
+            self._templates.render("BUTTON_MENU_INPUT_REPORT"),
+            self._templates.render("BUTTON_MENU_MANAGE_USERS"),
+        )
+
+    async def _super_admin_menu_keyboard(self):
+        await self._refresh_templates()
+        return super_admin_menu_keyboard(
+            self._templates.render("BUTTON_MENU_INPUT_REPORT"),
+            self._templates.render("BUTTON_MENU_MANAGE_USERS"),
+            self._templates.render("BUTTON_MENU_MANAGE_ADMINS"),
+            self._templates.render("BUTTON_MENU_MANAGE_STORES"),
         )
 
     async def _send_activation_contact_prompt(self, update: Update) -> None:
