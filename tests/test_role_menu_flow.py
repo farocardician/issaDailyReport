@@ -109,9 +109,6 @@ def test_menu_report_callback_enters_report_flow(step: Step, role: str) -> None:
 @pytest.mark.parametrize(
     ("step", "role", "data"),
     [
-        (Step.ADMIN_MENU, "ADMIN", "menu:users"),
-        (Step.SUPER_ADMIN_MENU, "SUPER_ADMIN", "menu:users"),
-        (Step.SUPER_ADMIN_MENU, "SUPER_ADMIN", "menu:admins"),
         (Step.SUPER_ADMIN_MENU, "SUPER_ADMIN", "menu:stores"),
     ],
 )
@@ -123,6 +120,32 @@ def test_management_menu_callbacks_send_placeholder(step: Step, role: str, data:
 
     assert sessions.session["current_step"] == step.value
     assert chat.sent_messages[-1]["text"] == "MENU_PLACEHOLDER"
+
+
+@pytest.mark.parametrize(
+    ("step", "role"),
+    [(Step.ADMIN_MENU, "ADMIN"), (Step.SUPER_ADMIN_MENU, "SUPER_ADMIN")],
+)
+def test_menu_users_callback_opens_manage_users_menu(step: Step, role: str) -> None:
+    user = _user("USR-1", "Ani", "081280003276", role=role, telegram_user_id=7)
+    flow, chat, sessions, _users = _flow(_FakeUsers(linked_users=[user]), step=step)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "menu:users"), SimpleNamespace()))
+
+    assert sessions.session["current_step"] == Step.MANAGE_USERS_MENU.value
+    assert chat.sent_messages[-1]["text"] == "MANAGE_USERS_MENU"
+    assert _callback_data(chat.sent_messages[-1]) == ["users:add", "users:list", "users:back:menu"]
+
+
+def test_menu_admins_callback_opens_manage_admins_menu() -> None:
+    user = _user("USR-1", "Ani", "081280003276", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _users = _flow(_FakeUsers(linked_users=[user]), step=Step.SUPER_ADMIN_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "menu:admins"), SimpleNamespace()))
+
+    assert sessions.session["current_step"] == Step.MANAGE_ADMINS_MENU.value
+    assert chat.sent_messages[-1]["text"] == "MANAGE_ADMINS_MENU"
+    assert _callback_data(chat.sent_messages[-1]) == ["admins:add", "admins:list", "admins:back:menu"]
 
 
 def test_inactive_linked_user_start_asks_for_contact() -> None:
@@ -193,6 +216,8 @@ def _templates() -> dict[str, str]:
         "MENU_SUPER_ADMIN": "MENU_SUPER_ADMIN",
         "MENU_PLACEHOLDER": "MENU_PLACEHOLDER",
         "MENU_ACCESS_DENIED": "MENU_ACCESS_DENIED",
+        "MANAGE_USERS_MENU": "MANAGE_USERS_MENU",
+        "MANAGE_ADMINS_MENU": "MANAGE_ADMINS_MENU",
         "BUTTON_SHARE_LOCATION": "Bagikan Lokasi",
         "BUTTON_SHARE_CONTACT": "Bagikan Nomor HP",
         "BUTTON_START": "Mulai",
@@ -201,6 +226,11 @@ def _templates() -> dict[str, str]:
         "BUTTON_MENU_MANAGE_USERS": "Kelola User",
         "BUTTON_MENU_MANAGE_ADMINS": "Kelola Admin",
         "BUTTON_MENU_MANAGE_STORES": "Kelola Store",
+        "BUTTON_USER_ADD": "Tambah User",
+        "BUTTON_USER_LIST": "Daftar User",
+        "BUTTON_ADMIN_ADD": "Tambah Admin",
+        "BUTTON_ADMIN_LIST": "Daftar Admin",
+        "BUTTON_BACK": "Kembali",
         "PROGRESS_MAIN_LABEL": "Langkah",
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "PROGRESS_PHASE_STORE": "Pilih Toko",

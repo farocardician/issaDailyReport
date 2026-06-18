@@ -13,7 +13,27 @@ MENU_ADMIN,"Menu Admin\n\nSilakan pilih menu:"
 MENU_SUPER_ADMIN,"Menu Super Admin\n\nSilakan pilih menu:"
 MENU_PLACEHOLDER,🚧 Fitur ini akan segera tersedia.
 MENU_ACCESS_DENIED,Kamu tidak punya akses untuk tindakan ini.
+MANAGE_USERS_MENU,"{{notice}}Kelola User\n\nSilakan pilih menu:"
+MANAGE_ADMINS_MENU,"{{notice}}Kelola Admin\n\nSilakan pilih menu:"
+USER_LIST,"{{notice}}Daftar User\n\nPilih user:"
+USER_LIST_EMPTY,"{{notice}}Daftar User\n\nBelum ada user."
+USER_LIST_BUTTON,{{user_name}} - {{status}}
+USER_DETAIL,"{{notice}}Detail User\n\nID: {{user_id}}\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\nStatus: {{status}}\nTelegram: {{telegram_link_status}}\n\nPilih tindakan:"
+ADMIN_LIST,"{{notice}}Daftar Admin\n\nPilih admin:"
+ADMIN_LIST_EMPTY,"{{notice}}Daftar Admin\n\nBelum ada admin."
+ADMIN_LIST_BUTTON,{{user_name}} - {{status}}
+ADMIN_DETAIL,"{{notice}}Detail Admin\n\nID: {{user_id}}\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\nStatus: {{status}}\nTelegram: {{telegram_link_status}}\n\nPilih tindakan:"
+USER_TELEGRAM_LINKED_YES,Terhubung
+USER_TELEGRAM_LINKED_NO,Belum terhubung
 REPORT_ALREADY_EXISTS,{{progress}}\n\nLaporan untuk toko dan tanggal ini sudah ada.\n\nMau submit lagi sebagai koreksi?
+ASK_USER_NAME,"{{error}}Nama User\n\nKetik nama lengkap user."
+ASK_USER_PHONE,"{{error}}Nomor HP User\n\nKetik nomor HP terdaftar user."
+ASK_USER_EMAIL,"{{error}}Email User\n\nKetik email user, atau tekan Lewati."
+ASK_USER_NOTES,"{{error}}Catatan User\n\nKetik catatan, atau tekan Lewati."
+ASK_ADMIN_NAME,"{{error}}Nama Admin\n\nKetik nama lengkap admin."
+ASK_ADMIN_PHONE,"{{error}}Nomor HP Admin\n\nKetik nomor HP terdaftar admin."
+ASK_ADMIN_EMAIL,"{{error}}Email Admin\n\nKetik email admin, atau tekan Lewati."
+ASK_ADMIN_NOTES,"{{error}}Catatan Admin\n\nKetik catatan, atau tekan Lewati."
 ASK_SALES_SOURCES,"{{progress}}\n\nPilih sumber penjualan hari ini.\n\n{{selected_sources}}\n\nPilih satu atau lebih sumber untuk lanjut input.\nKalau tidak ada penjualan, tekan <b>Tidak Ada Penjualan</b>."
 ASK_SALES_TRAFFIC,"{{progress}}\n{{source_progress}}\n\nBerapa jumlah traffic / pengunjung untuk <b>{{source}}</b> hari ini?\n\nKetik angka saja."
 ASK_SALES_GMV,"{{progress}}\n{{source_progress}}\n\nBerapa GMV dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
@@ -36,6 +56,29 @@ BUTTON_MENU_INPUT_REPORT,Input Laporan Harian
 BUTTON_MENU_MANAGE_USERS,Kelola User
 BUTTON_MENU_MANAGE_ADMINS,Kelola Admin
 BUTTON_MENU_MANAGE_STORES,Kelola Store
+BUTTON_USER_ADD,Tambah User
+BUTTON_USER_LIST,Daftar User
+BUTTON_ADMIN_ADD,Tambah Admin
+BUTTON_ADMIN_LIST,Daftar Admin
+BUTTON_BACK,Kembali
+BUTTON_USER_EDIT,Ubah Data
+BUTTON_USER_DEACTIVATE,Nonaktifkan
+BUTTON_USER_REACTIVATE,Aktifkan Kembali
+BUTTON_USER_RESET_LINK,Reset Link Telegram
+BUTTON_ADMIN_EDIT,Ubah Data
+BUTTON_ADMIN_DEACTIVATE,Nonaktifkan
+BUTTON_ADMIN_REACTIVATE,Aktifkan Kembali
+BUTTON_ADMIN_RESET_LINK,Reset Link Telegram
+BUTTON_USER_FIELD_NAME,Nama
+BUTTON_USER_FIELD_PHONE,Nomor HP
+BUTTON_USER_FIELD_EMAIL,Email
+BUTTON_USER_FIELD_NOTES,Catatan
+BUTTON_ADMIN_FIELD_NAME,Nama
+BUTTON_ADMIN_FIELD_PHONE,Nomor HP
+BUTTON_ADMIN_FIELD_EMAIL,Email
+BUTTON_ADMIN_FIELD_NOTES,Catatan
+BUTTON_SAVE,Simpan
+BUTTON_EDIT,Ubah
 BUTTON_CONFIRM_YES,Ya
 BUTTON_OTHER_STORE,Pilih toko lain
 BUTTON_SUBMIT,Kirim
@@ -53,6 +96,31 @@ BUTTON_DUPLICATE_CONFIRM,"Ya, koreksi"
 BUTTON_DUPLICATE_CANCEL,Batal
 BUTTON_NONE,Tidak Ada
 BUTTON_SKIP,Lewati
+USER_ERROR_NAME_REQUIRED,"Nama wajib diisi.\n\n"
+USER_ERROR_PHONE_REQUIRED,"Nomor HP wajib diisi.\n\n"
+USER_ERROR_PHONE_INVALID,"Nomor HP hanya boleh berisi angka dan format nomor HP yang valid.\n\n"
+USER_ERROR_PHONE_DUPLICATE,"Nomor HP ini sudah digunakan user lain.\n\n"
+USER_ERROR_EMAIL_INVALID,"Format email belum valid.\n\n"
+USER_FORM_REVIEW,"{{notice}}Review User\n\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\n\nSimpan data ini?"
+USER_EDIT_MENU,Pilih data user yang ingin diubah:
+USER_CONFIRM_DEACTIVATE,"Nonaktifkan user {{user_name}}?\n\nUser ini tidak bisa menggunakan bot sampai diaktifkan kembali."
+USER_CONFIRM_REACTIVATE,Aktifkan kembali user {{user_name}}?
+USER_CONFIRM_RESET_LINK,"Reset link Telegram user {{user_name}}?\n\nUser perlu aktivasi ulang dengan membagikan nomor HP."
+USER_ADDED,"User berhasil ditambahkan.\n\n"
+USER_UPDATED,"Data user berhasil diperbarui.\n\n"
+USER_DEACTIVATED,"User berhasil dinonaktifkan.\n\n"
+USER_REACTIVATED,"User berhasil diaktifkan kembali.\n\n"
+USER_LINK_RESET,"Link Telegram user berhasil direset.\n\n"
+ADMIN_FORM_REVIEW,"{{notice}}Review Admin\n\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\n\nSimpan data ini?"
+ADMIN_EDIT_MENU,Pilih data admin yang ingin diubah:
+ADMIN_CONFIRM_DEACTIVATE,"Nonaktifkan admin {{user_name}}?\n\nAdmin ini tidak bisa menggunakan bot sampai diaktifkan kembali."
+ADMIN_CONFIRM_REACTIVATE,Aktifkan kembali admin {{user_name}}?
+ADMIN_CONFIRM_RESET_LINK,"Reset link Telegram admin {{user_name}}?\n\nAdmin perlu aktivasi ulang dengan membagikan nomor HP."
+ADMIN_ADDED,"Admin berhasil ditambahkan.\n\n"
+ADMIN_UPDATED,"Data admin berhasil diperbarui.\n\n"
+ADMIN_DEACTIVATED,"Admin berhasil dinonaktifkan.\n\n"
+ADMIN_REACTIVATED,"Admin berhasil diaktifkan kembali.\n\n"
+ADMIN_LINK_RESET,"Link Telegram admin berhasil direset.\n\n"
 SELECTED_PREFIX,✓
 PROGRESS_MAIN_LABEL,Langkah
 PROGRESS_MAIN_FORMAT,{{label}} {{current}}/{{total}} · {{phase}}

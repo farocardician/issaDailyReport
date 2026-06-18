@@ -61,6 +61,150 @@ def super_admin_menu_keyboard(
     )
 
 
+def management_menu_keyboard(
+    prefix: str,
+    add_label: str,
+    list_label: str,
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(add_label, callback_data=f"{prefix}:add")],
+            [InlineKeyboardButton(list_label, callback_data=f"{prefix}:list")],
+            [InlineKeyboardButton(back_label, callback_data=f"{prefix}:back:menu")],
+        ]
+    )
+
+
+def management_list_keyboard(
+    prefix: str,
+    users: Sequence[Mapping[str, object]],
+    labels: Mapping[str, str],
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(labels[str(user["user_id"])], callback_data=f"{prefix}:view:{user['user_id']}")]
+        for user in users
+    ]
+    rows.append([InlineKeyboardButton(back_label, callback_data=f"{prefix}:back:menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def management_detail_keyboard(
+    prefix: str,
+    user_id: str,
+    is_active: bool,
+    edit_label: str,
+    deactivate_label: str,
+    reactivate_label: str,
+    reset_link_label: str,
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    status_label = deactivate_label if is_active else reactivate_label
+    status_action = "deactivate" if is_active else "reactivate"
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(edit_label, callback_data=f"{prefix}:edit:{user_id}")],
+            [InlineKeyboardButton(status_label, callback_data=f"{prefix}:{status_action}:{user_id}")],
+            [InlineKeyboardButton(reset_link_label, callback_data=f"{prefix}:reset_link:{user_id}")],
+            [InlineKeyboardButton(back_label, callback_data=f"{prefix}:back:list")],
+        ]
+    )
+
+
+def management_edit_menu_keyboard(
+    prefix: str,
+    field_labels: Sequence[tuple[str, str]],
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(label, callback_data=f"{prefix}:field:{field}")]
+        for field, label in field_labels
+    ]
+    rows.append([InlineKeyboardButton(back_label, callback_data=f"{prefix}:back:detail")])
+    return InlineKeyboardMarkup(rows)
+
+
+def manage_users_menu_keyboard(add_label: str, list_label: str, back_label: str) -> InlineKeyboardMarkup:
+    return management_menu_keyboard("users", add_label, list_label, back_label)
+
+
+def user_list_keyboard(
+    users: Sequence[Mapping[str, object]],
+    labels: Mapping[str, str],
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    return management_list_keyboard("users", users, labels, back_label)
+
+
+def user_detail_keyboard(
+    user_id: str,
+    is_active: bool,
+    edit_label: str,
+    deactivate_label: str,
+    reactivate_label: str,
+    reset_link_label: str,
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    return management_detail_keyboard(
+        "users",
+        user_id,
+        is_active,
+        edit_label,
+        deactivate_label,
+        reactivate_label,
+        reset_link_label,
+        back_label,
+    )
+
+
+def user_edit_menu_keyboard(field_labels: Sequence[tuple[str, str]], back_label: str) -> InlineKeyboardMarkup:
+    return management_edit_menu_keyboard("users", field_labels, back_label)
+
+
+def confirm_keyboard(
+    yes_label: str,
+    back_label: str,
+    yes_data: str,
+    back_data: str,
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(yes_label, callback_data=yes_data),
+                InlineKeyboardButton(back_label, callback_data=back_data),
+            ]
+        ]
+    )
+
+
+def user_form_navigation_keyboard(
+    previous_label: str,
+    cancel_label: str,
+    skip_label: str | None = None,
+) -> ReplyKeyboardMarkup:
+    row = [previous_label]
+    if skip_label is not None:
+        row.append(skip_label)
+    row.append(cancel_label)
+    return ReplyKeyboardMarkup(
+        [row],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def user_form_review_keyboard(save_label: str, edit_label: str, cancel_label: str) -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [save_label, edit_label],
+            [cancel_label],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 def start_again_keyboard(start_label: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [[start_label]],

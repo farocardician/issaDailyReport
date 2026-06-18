@@ -11,8 +11,13 @@ from telegram.ext import ContextTypes
 from app.bot.keyboards import (
     activation_contact_keyboard,
     admin_menu_keyboard,
+    confirm_keyboard,
     confirm_store_keyboard,
     duplicate_keyboard,
+    management_detail_keyboard,
+    management_edit_menu_keyboard,
+    management_list_keyboard,
+    management_menu_keyboard,
     manual_store_list_keyboard,
     none_reply_keyboard,
     retry_location_keyboard,
@@ -26,6 +31,15 @@ from app.bot.keyboards import (
     store_list_keyboard,
     super_admin_menu_keyboard,
     summary_keyboard,
+    user_form_navigation_keyboard,
+    user_form_review_keyboard,
+)
+from app.bot.management_scope import (
+    SCOPE_ADMINS,
+    SCOPE_USERS,
+    ManagementScope,
+    scope_from_callback,
+    scope_from_draft,
 )
 from app.bot.notifications import send_admin_notification
 from app.bot.progress import contextual_step_progress, progress_for_step
@@ -45,6 +59,13 @@ from app.bot.stock_issue_text import (
     selected_issue_text,
     sku_list_text,
 )
+from app.bot.user_admin_text import (
+    user_detail_tokens,
+    user_field_button_labels,
+    user_field_prompt_key,
+    user_form_review_tokens,
+    user_list_button_labels,
+)
 from app.config import Settings
 from app.domain.activation import (
     ActivationOutcome,
@@ -54,6 +75,7 @@ from app.domain.activation import (
 from app.domain.geo import haversine_meters
 from app.domain.report import build_summary, generate_report_id, location_status
 from app.domain.roles import (
+    Role,
     can_manage_admins,
     can_manage_stores,
     can_manage_users,
@@ -64,6 +86,13 @@ from app.domain.sales_sources import GmvSource, input_plan, source_fields
 from app.domain.session_state import Step, next_step
 from app.domain.stock_issues import StockIssue
 from app.domain.store_matching import MatchType, StoreCandidate, StoreLocation, match_stores
+from app.domain.user_management import (
+    OPTIONAL_FIELDS,
+    USER_FORM_FIELDS,
+    generate_user_id,
+    is_duplicate_phone,
+    validate_field,
+)
 from app.domain.validation import normalize_text_dash, parse_int_lenient
 from app.repositories.reports import ReportsRepository
 from app.repositories.sales_sources import SalesSourcesRepository
@@ -84,6 +113,16 @@ SALES_FIELD_TEMPLATE_KEYS = {
     "gmv": "ASK_SALES_GMV",
     "order_count": "ASK_SALES_ORDER",
     "pieces_sold": "ASK_SALES_PIECES",
+}
+
+MANAGEMENT_CALLBACK_STEPS = {
+    Step.MANAGE_USERS_MENU,
+    Step.MANAGE_ADMINS_MENU,
+    Step.USER_LIST,
+    Step.USER_DETAIL,
+    Step.USER_EDIT_MENU,
+    Step.USER_CONFIRM_STATUS,
+    Step.USER_CONFIRM_RESET_LINK,
 }
 
 class ReportFlow:
@@ -157,6 +196,18 @@ class ReportFlow:
             await self._handle_sales_summary_text(update, session)
         elif step == Step.ASK_STOCK_ISSUE:
             await self._handle_stock_issue_text(update, session)
+        elif step == Step.USER_FORM_INPUT:
+            scope = scope_from_draft(dict(session["draft_report"]))
+            if scope is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            await self._handle_user_form_input_text(update, session, scope)
+        elif step == Step.USER_FORM_REVIEW:
+            scope = scope_from_draft(dict(session["draft_report"]))
+            if scope is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            await self._handle_user_form_review_text(update, session, scope)
         elif step in TEXT_STEPS:
             await self._handle_text(update, session, step)
         else:
@@ -206,6 +257,8 @@ class ReportFlow:
             await self._handle_admin_menu_callback(update, session, data)
         elif step == Step.SUPER_ADMIN_MENU:
             await self._handle_super_admin_menu_callback(update, session, data)
+        elif step in MANAGEMENT_CALLBACK_STEPS and data.startswith(("users:", "admins:")):
+            await self._handle_management_callback(update, session, data)
         else:
             await self._send(update, "UNKNOWN_COMMAND")
 
@@ -1050,12 +1103,22 @@ class ReportFlow:
             progress_step=Step.EDIT_SALES_MENU,
         )
 
-    async def _send_menu(self, update: Update, step: Step) -> None:
+    async def _send_menu(self, update: Update, step: Step, edit: bool = False) -> None:
         if step == Step.ADMIN_MENU:
-            await self._send(update, "MENU_ADMIN", reply_markup=await self._admin_menu_keyboard())
+            if edit:
+                await self._send_or_edit(update, "MENU_ADMIN", reply_markup=await self._admin_menu_keyboard())
+            else:
+                await self._send(update, "MENU_ADMIN", reply_markup=await self._admin_menu_keyboard())
             return
         if step == Step.SUPER_ADMIN_MENU:
-            await self._send(update, "MENU_SUPER_ADMIN", reply_markup=await self._super_admin_menu_keyboard())
+            if edit:
+                await self._send_or_edit(
+                    update,
+                    "MENU_SUPER_ADMIN",
+                    reply_markup=await self._super_admin_menu_keyboard(),
+                )
+            else:
+                await self._send(update, "MENU_SUPER_ADMIN", reply_markup=await self._super_admin_menu_keyboard())
             return
         await self._send(update, "UNKNOWN_COMMAND")
 
@@ -1087,7 +1150,10 @@ class ReportFlow:
             if not can_manage_users(role):
                 await self._send(update, "MENU_ACCESS_DENIED")
                 return
-            await self._send(update, "MENU_PLACEHOLDER")
+            await self._open_management_menu(update, actor, SCOPE_USERS)
+            return
+        if data == "menu:admins":
+            await self._send(update, "MENU_ACCESS_DENIED")
             return
 
         await self._send(update, "UNKNOWN_COMMAND")
@@ -1111,13 +1177,13 @@ class ReportFlow:
             if not can_manage_users(role):
                 await self._send(update, "MENU_ACCESS_DENIED")
                 return
-            await self._send(update, "MENU_PLACEHOLDER")
+            await self._open_management_menu(update, actor, SCOPE_USERS)
             return
         if data == "menu:admins":
             if not can_manage_admins(role):
                 await self._send(update, "MENU_ACCESS_DENIED")
                 return
-            await self._send(update, "MENU_PLACEHOLDER")
+            await self._open_management_menu(update, actor, SCOPE_ADMINS)
             return
         if data == "menu:stores":
             if not can_manage_stores(role):
@@ -1127,6 +1193,724 @@ class ReportFlow:
             return
 
         await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _authorize_management(self, update: Update, scope: ManagementScope) -> dict[str, Any] | None:
+        actor = await self._current_actor(update)
+        if actor is None or not scope.can_manage(normalize_role(actor.get("role"))):
+            await self._send(update, "MENU_ACCESS_DENIED")
+            return None
+        return actor
+
+    async def _load_management_target(
+        self,
+        update: Update,
+        scope: ManagementScope,
+        actor: dict[str, Any],
+        user_id: str,
+    ) -> dict[str, Any] | None:
+        target = await self._users.get_by_id(user_id)
+        if (
+            target is None
+            or normalize_role(target.get("role")) != scope.managed_role
+            or (scope.block_self and target["user_id"] == actor["user_id"])
+        ):
+            await self._send(update, "MENU_ACCESS_DENIED")
+            return None
+        return target
+
+    async def _ensure_management_form_target_allowed(
+        self,
+        update: Update,
+        scope: ManagementScope,
+        actor: dict[str, Any],
+        form: dict[str, Any],
+    ) -> bool:
+        if form.get("mode") != "edit":
+            return True
+        return await self._load_management_target(update, scope, actor, str(form.get("target_id", ""))) is not None
+
+    async def _handle_management_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        scope = scope_from_callback(data)
+        if scope is None:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        actor = await self._authorize_management(update, scope)
+        if actor is None:
+            return
+
+        if data == f"{scope.name}:add":
+            await self._start_management_add_form(update, actor, scope)
+            return
+        if data == f"{scope.name}:list":
+            await self._open_management_list(update, actor, scope)
+            return
+        if data.startswith(f"{scope.name}:view:"):
+            await self._open_management_detail(update, actor, scope, data.removeprefix(f"{scope.name}:view:"))
+            return
+        if data.startswith(f"{scope.name}:edit:"):
+            await self._open_management_edit_menu(update, actor, scope, data.removeprefix(f"{scope.name}:edit:"))
+            return
+        if data.startswith(f"{scope.name}:field:"):
+            await self._start_management_field_input(
+                update,
+                actor,
+                session,
+                scope,
+                data.removeprefix(f"{scope.name}:field:"),
+            )
+            return
+        if data.startswith(f"{scope.name}:deactivate:"):
+            await self._open_management_status_confirmation(
+                update,
+                actor,
+                scope,
+                data.removeprefix(f"{scope.name}:deactivate:"),
+                "deactivate",
+            )
+            return
+        if data.startswith(f"{scope.name}:reactivate:"):
+            await self._open_management_status_confirmation(
+                update,
+                actor,
+                scope,
+                data.removeprefix(f"{scope.name}:reactivate:"),
+                "reactivate",
+            )
+            return
+        if data == f"{scope.name}:confirm_status":
+            await self._confirm_management_status(update, actor, session, scope)
+            return
+        if data.startswith(f"{scope.name}:reset_link:"):
+            await self._open_management_reset_link_confirmation(
+                update,
+                actor,
+                scope,
+                data.removeprefix(f"{scope.name}:reset_link:"),
+            )
+            return
+        if data == f"{scope.name}:confirm_reset":
+            await self._confirm_management_reset_link(update, actor, session, scope)
+            return
+        if data == f"{scope.name}:back:menu":
+            if Step(session["current_step"]) == scope.root_step:
+                await self._return_to_actor_menu(update, actor)
+                return
+            await self._open_management_menu(update, actor, scope)
+            return
+        if data == f"{scope.name}:back:list":
+            await self._open_management_list(update, actor, scope)
+            return
+        if data == f"{scope.name}:back:detail":
+            await self._handle_management_back_to_detail(update, actor, session, scope)
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _open_management_menu(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+        notice_key: str | None = None,
+    ) -> None:
+        await self._persist(
+            update,
+            scope.root_step,
+            {"user_name": actor["name"], "mgmt_scope": scope.name},
+            user_id=actor["user_id"],
+        )
+        await self._send_management_menu(update, scope, notice_key)
+
+    async def _return_to_actor_menu(self, update: Update, actor: dict[str, Any]) -> None:
+        step = menu_step_for_role(normalize_role(actor.get("role")))
+        if step is None:
+            await self._start_report_flow(update, actor)
+            return
+        await self._persist(update, step, {"user_name": actor["name"]}, user_id=actor["user_id"])
+        await self._send_menu(update, step, edit=True)
+
+    async def _open_management_list(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+        notice_key: str | None = None,
+    ) -> None:
+        await self._persist(
+            update,
+            Step.USER_LIST,
+            {"user_name": actor["name"], "mgmt_scope": scope.name},
+            user_id=actor["user_id"],
+        )
+        await self._send_management_list(update, scope, notice_key)
+
+    async def _open_management_detail(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+        target_id: str,
+        notice_key: str | None = None,
+    ) -> None:
+        target = await self._load_management_target(update, scope, actor, target_id)
+        if target is None:
+            return
+
+        await self._persist(
+            update,
+            Step.USER_DETAIL,
+            {"user_name": actor["name"], "mgmt_scope": scope.name, "user_target_id": target["user_id"]},
+            user_id=actor["user_id"],
+        )
+        await self._send_management_detail(update, scope, target, notice_key)
+
+    async def _start_management_add_form(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        form = {
+            "mode": "add",
+            "fields": {},
+            "plan": list(USER_FORM_FIELDS),
+            "pos": 0,
+        }
+        await self._remove_callback_keyboard(update)
+        await self._persist(
+            update,
+            Step.USER_FORM_INPUT,
+            {"user_name": actor["name"], "mgmt_scope": scope.name, "user_form": form},
+            user_id=actor["user_id"],
+        )
+        await self._send_management_form_prompt(update, form, scope)
+
+    async def _open_management_edit_menu(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+        target_id: str,
+        back_to_review: bool = False,
+    ) -> None:
+        target = await self._load_management_target(update, scope, actor, target_id)
+        if target is None:
+            return
+        form = {
+            "mode": "edit",
+            "target_id": target["user_id"],
+            "fields": {
+                "name": target["name"],
+                "phone": target["phone"],
+                "email": target["email"],
+                "notes": target["notes"],
+            },
+            "edit_menu_back": "review" if back_to_review else "detail",
+        }
+        await self._persist(
+            update,
+            Step.USER_EDIT_MENU,
+            {
+                "user_name": actor["name"],
+                "mgmt_scope": scope.name,
+                "user_target_id": target["user_id"],
+                "user_form": form,
+            },
+            user_id=actor["user_id"],
+        )
+        await self._send_management_edit_menu(update, scope)
+
+    async def _start_management_field_input(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+        field: str,
+    ) -> None:
+        if field not in USER_FORM_FIELDS:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("user_form", {}))
+        if not form:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_management_form_target_allowed(update, scope, actor, form):
+            return
+        form["plan"] = [field]
+        form["pos"] = 0
+        form["return_to"] = "review"
+        draft["mgmt_scope"] = scope.name
+        draft["user_form"] = form
+        await self._remove_callback_keyboard(update)
+        await self._persist(
+            update,
+            Step.USER_FORM_INPUT,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_management_form_prompt(update, form, scope)
+
+    async def _handle_user_form_input_text(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        actor = await self._authorize_management(update, scope)
+        if actor is None:
+            return
+
+        text = _message_text(update)
+        if text is None:
+            await self._send_management_form_prompt(update, dict(session["draft_report"]).get("user_form", {}), scope)
+            return
+
+        text = text.strip()
+        if await self._is_cancel_answer(text):
+            await self._cancel(update)
+            return
+        if await self._is_previous_answer(text):
+            await self._handle_management_form_previous(update, actor, session, scope)
+            return
+
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("user_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan):
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_management_form_target_allowed(update, scope, actor, form):
+            return
+
+        field = str(plan[pos])
+        raw_value = "-" if field in OPTIONAL_FIELDS and await self._is_skip_answer(text) else text
+        result = validate_field(field, raw_value)
+        if not result.ok:
+            await self._send_management_form_prompt(update, form, scope, result.error_key)
+            return
+
+        if field == "phone":
+            exclude_user_id = str(form["target_id"]) if form.get("mode") == "edit" else None
+            if is_duplicate_phone(await self._users.list_all(), str(result.value), exclude_user_id):
+                await self._send_management_form_prompt(update, form, scope, "USER_ERROR_PHONE_DUPLICATE")
+                return
+
+        fields = dict(form.get("fields", {}))
+        fields[field] = result.value
+        form["fields"] = fields
+        pos += 1
+        if pos >= len(plan):
+            form.pop("plan", None)
+            form.pop("pos", None)
+            draft["mgmt_scope"] = scope.name
+            draft["user_form"] = form
+            await self._persist(
+                update,
+                Step.USER_FORM_REVIEW,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_management_form_review(update, form, scope)
+            return
+
+        form["pos"] = pos
+        draft["mgmt_scope"] = scope.name
+        draft["user_form"] = form
+        await self._persist(
+            update,
+            Step.USER_FORM_INPUT,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_management_form_prompt(update, form, scope)
+
+    async def _handle_management_form_previous(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("user_form", {}))
+        pos = int(form.get("pos", 0))
+        if pos > 0:
+            form["pos"] = pos - 1
+            draft["mgmt_scope"] = scope.name
+            draft["user_form"] = form
+            await self._persist(
+                update,
+                Step.USER_FORM_INPUT,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_management_form_prompt(update, form, scope)
+            return
+
+        if form.get("mode") == "edit":
+            await self._open_management_detail(update, actor, scope, str(form["target_id"]))
+            return
+        await self._open_management_menu(update, actor, scope)
+
+    async def _handle_user_form_review_text(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        actor = await self._authorize_management(update, scope)
+        if actor is None:
+            return
+
+        text = _message_text(update)
+        if text is None:
+            await self._send_management_form_review(update, dict(session["draft_report"]).get("user_form", {}), scope)
+            return
+
+        answer = text.strip().casefold()
+        await self._refresh_templates()
+        if answer == self._templates.render("BUTTON_SAVE").casefold():
+            await self._save_management_form(update, actor, session, scope)
+            return
+        if answer == self._templates.render("BUTTON_EDIT").casefold():
+            await self._open_management_review_edit_menu(update, actor, session, scope)
+            return
+        if answer == self._templates.render("BUTTON_CANCEL").casefold():
+            await self._cancel(update)
+            return
+
+        await self._send_management_form_review(update, dict(session["draft_report"]).get("user_form", {}), scope)
+
+    async def _open_management_review_edit_menu(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("user_form", {}))
+        if not form:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_management_form_target_allowed(update, scope, actor, form):
+            return
+        form["edit_menu_back"] = "review"
+        draft["mgmt_scope"] = scope.name
+        draft["user_form"] = form
+        await self._persist(
+            update,
+            Step.USER_EDIT_MENU,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_management_edit_menu(update, scope)
+
+    async def _save_management_form(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        form = dict(dict(session["draft_report"]).get("user_form", {}))
+        fields = dict(form.get("fields", {}))
+        validation_error = await self._validate_user_form_for_save(form, fields)
+        if validation_error is not None:
+            field, error_key = validation_error
+            form["plan"] = [field]
+            form["pos"] = 0
+            draft = dict(session["draft_report"])
+            draft["mgmt_scope"] = scope.name
+            draft["user_form"] = form
+            await self._persist(
+                update,
+                Step.USER_FORM_INPUT,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_management_form_prompt(update, form, scope, error_key)
+            return
+
+        if form.get("mode") == "edit":
+            target = await self._load_management_target(update, scope, actor, str(form["target_id"]))
+            if target is None:
+                return
+            await self._users.update_basic(
+                str(form["target_id"]),
+                str(fields["name"]),
+                str(fields["phone"]),
+                fields.get("email"),
+                fields.get("notes"),
+            )
+            await self._open_management_detail(update, actor, scope, str(form["target_id"]), scope.key("UPDATED"))
+            return
+
+        await self._create_user_with_retry(fields, scope)
+        await self._open_management_menu(update, actor, scope, scope.key("ADDED"))
+
+    async def _validate_user_form_for_save(
+        self,
+        form: dict[str, Any],
+        fields: dict[str, Any],
+    ) -> tuple[str, str] | None:
+        for field in USER_FORM_FIELDS:
+            result = validate_field(field, fields.get(field))
+            if not result.ok:
+                return field, str(result.error_key)
+            fields[field] = result.value
+
+        exclude_user_id = str(form["target_id"]) if form.get("mode") == "edit" else None
+        if is_duplicate_phone(await self._users.list_all(), str(fields["phone"]), exclude_user_id):
+            return "phone", "USER_ERROR_PHONE_DUPLICATE"
+        return None
+
+    async def _create_user_with_retry(self, fields: dict[str, Any], scope: ManagementScope) -> str:
+        for _ in range(10):
+            user_id = generate_user_id(self._now())
+            if await self._users.get_by_id(user_id) is not None:
+                continue
+            await self._users.create_user(
+                user_id,
+                scope.managed_role.value,
+                str(fields["name"]),
+                str(fields["phone"]),
+                fields.get("email"),
+                fields.get("notes"),
+                self._settings.active_status,
+            )
+            return user_id
+        raise RuntimeError("Unable to generate a unique user_id")
+
+    async def _open_management_status_confirmation(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+        target_id: str,
+        intent: str,
+    ) -> None:
+        target = await self._load_management_target(update, scope, actor, target_id)
+        if target is None:
+            return
+
+        draft = {
+            "user_name": actor["name"],
+            "mgmt_scope": scope.name,
+            "user_target_id": target["user_id"],
+            "user_status_intent": intent,
+        }
+        await self._persist(update, Step.USER_CONFIRM_STATUS, draft, user_id=actor["user_id"])
+        key = scope.key("CONFIRM_DEACTIVATE") if intent == "deactivate" else scope.key("CONFIRM_REACTIVATE")
+        await self._send_management_confirmation(update, scope, key, target, f"{scope.name}:confirm_status")
+
+    async def _confirm_management_status(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        target = await self._load_management_target(update, scope, actor, str(draft.get("user_target_id", "")))
+        if target is None:
+            return
+
+        intent = draft.get("user_status_intent")
+        if intent == "deactivate":
+            status = self._settings.inactive_status
+            notice_key = scope.key("DEACTIVATED")
+        elif intent == "reactivate":
+            status = self._settings.active_status
+            notice_key = scope.key("REACTIVATED")
+        else:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        await self._users.set_status(target["user_id"], status)
+        await self._open_management_detail(update, actor, scope, target["user_id"], notice_key)
+
+    async def _open_management_reset_link_confirmation(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        scope: ManagementScope,
+        target_id: str,
+    ) -> None:
+        target = await self._load_management_target(update, scope, actor, target_id)
+        if target is None:
+            return
+
+        draft = {"user_name": actor["name"], "mgmt_scope": scope.name, "user_target_id": target["user_id"]}
+        await self._persist(update, Step.USER_CONFIRM_RESET_LINK, draft, user_id=actor["user_id"])
+        await self._send_management_confirmation(
+            update,
+            scope,
+            scope.key("CONFIRM_RESET_LINK"),
+            target,
+            f"{scope.name}:confirm_reset",
+        )
+
+    async def _confirm_management_reset_link(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        target = await self._load_management_target(
+            update,
+            scope,
+            actor,
+            str(dict(session["draft_report"]).get("user_target_id", "")),
+        )
+        if target is None:
+            return
+
+        await self._users.reset_telegram_link(target["user_id"])
+        await self._open_management_detail(update, actor, scope, target["user_id"], scope.key("LINK_RESET"))
+
+    async def _handle_management_back_to_detail(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("user_form", {}))
+        if Step(session["current_step"]) == Step.USER_EDIT_MENU and form.get("edit_menu_back") == "review":
+            draft["mgmt_scope"] = scope.name
+            await self._persist(
+                update,
+                Step.USER_FORM_REVIEW,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_management_form_review(update, form, scope)
+            return
+
+        target_id = str(draft.get("user_target_id") or form.get("target_id") or "")
+        if not target_id:
+            await self._open_management_menu(update, actor, scope)
+            return
+        await self._open_management_detail(update, actor, scope, target_id)
+
+    async def _send_management_menu(
+        self,
+        update: Update,
+        scope: ManagementScope,
+        notice_key: str | None = None,
+    ) -> None:
+        await self._send_or_edit(
+            update,
+            scope.menu_key,
+            reply_markup=await self._management_menu_keyboard(scope),
+            notice=await self._notice_text(notice_key),
+        )
+
+    async def _send_management_list(
+        self,
+        update: Update,
+        scope: ManagementScope,
+        notice_key: str | None = None,
+    ) -> None:
+        users = await self._users.list_by_role(scope.managed_role.value)
+        key = scope.key("LIST") if users else scope.key("LIST_EMPTY")
+        await self._send_or_edit(
+            update,
+            key,
+            reply_markup=await self._management_list_keyboard(users, scope),
+            notice=await self._notice_text(notice_key),
+        )
+
+    async def _send_management_detail(
+        self,
+        update: Update,
+        scope: ManagementScope,
+        target: dict[str, Any],
+        notice_key: str | None = None,
+    ) -> None:
+        await self._refresh_templates()
+        await self._send_or_edit(
+            update,
+            scope.key("DETAIL"),
+            reply_markup=await self._management_detail_keyboard(target, scope),
+            **user_detail_tokens(self._templates, target, await self._notice_text(notice_key)),
+        )
+
+    async def _send_management_edit_menu(self, update: Update, scope: ManagementScope) -> None:
+        await self._send_or_edit(
+            update,
+            scope.key("EDIT_MENU"),
+            reply_markup=await self._management_edit_menu_keyboard(scope),
+        )
+
+    async def _send_management_confirmation(
+        self,
+        update: Update,
+        scope: ManagementScope,
+        key: str,
+        target: dict[str, Any],
+        yes_data: str,
+    ) -> None:
+        await self._send_or_edit(
+            update,
+            key,
+            reply_markup=await self._management_confirm_keyboard(yes_data, scope),
+            user_name=target["name"],
+        )
+
+    async def _send_management_form_prompt(
+        self,
+        update: Update,
+        form: dict[str, Any],
+        scope: ManagementScope,
+        error_key: str | None = None,
+    ) -> None:
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan):
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        field = str(plan[pos])
+        await self._send_trusted(
+            update,
+            user_field_prompt_key(field, scope),
+            {"error"},
+            error=await self._notice_text(error_key),
+            reply_markup=await self._user_form_navigation_keyboard(field),
+        )
+
+    async def _send_management_form_review(
+        self,
+        update: Update,
+        form: dict[str, Any],
+        scope: ManagementScope,
+    ) -> None:
+        await self._send(
+            update,
+            scope.key("FORM_REVIEW"),
+            reply_markup=await self._user_form_review_keyboard(),
+            **user_form_review_tokens(dict(form.get("fields", {}))),
+        )
 
     async def _sales_source_selected_text(self, draft: dict[str, Any]) -> str:
         selected_ids = list(draft.get("sales_source_ids", []))
@@ -1347,6 +2131,50 @@ class ReportFlow:
             reply_markup=reply_markup,
         )
 
+    async def _send_or_edit(
+        self,
+        update: Update,
+        key: str,
+        reply_markup: Any = None,
+        trusted_tokens: set[str] | None = None,
+        **tokens: Any,
+    ) -> None:
+        await self._refresh_templates()
+        if trusted_tokens is None:
+            text = self._templates.render(key, **tokens)
+        else:
+            text = self._templates.render_trusted(key, trusted_tokens, **tokens)
+
+        callback_query = update.callback_query
+        if (
+            callback_query is not None
+            and callback_query.message is not None
+            and hasattr(callback_query, "edit_message_text")
+        ):
+            try:
+                await callback_query.edit_message_text(
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                )
+                return
+            except BadRequest as exc:
+                if "Message is not modified" in str(exc):
+                    return
+                raise
+
+        await update.effective_chat.send_message(
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=reply_markup,
+        )
+
+    async def _notice_text(self, key: str | None) -> str:
+        if key is None:
+            return ""
+        await self._refresh_templates()
+        return self._templates.render(key)
+
     async def _send_step_prompt(self, update: Update, step: Step) -> None:
         if step == Step.ASK_STOCK_ISSUE:
             await self._send_stock_issue_prompt(update, {})
@@ -1480,6 +2308,70 @@ class ReportFlow:
             self._templates.render("BUTTON_MENU_MANAGE_USERS"),
             self._templates.render("BUTTON_MENU_MANAGE_ADMINS"),
             self._templates.render("BUTTON_MENU_MANAGE_STORES"),
+        )
+
+    async def _management_menu_keyboard(self, scope: ManagementScope):
+        await self._refresh_templates()
+        return management_menu_keyboard(
+            scope.name,
+            self._templates.render(f"BUTTON_{scope.entity}_ADD"),
+            self._templates.render(f"BUTTON_{scope.entity}_LIST"),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _management_list_keyboard(self, users: list[dict[str, Any]], scope: ManagementScope):
+        await self._refresh_templates()
+        return management_list_keyboard(
+            scope.name,
+            users,
+            user_list_button_labels(self._templates, scope, users),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _management_detail_keyboard(self, user: dict[str, Any], scope: ManagementScope):
+        await self._refresh_templates()
+        return management_detail_keyboard(
+            scope.name,
+            str(user["user_id"]),
+            user["status"] == self._settings.active_status,
+            self._templates.render(f"BUTTON_{scope.entity}_EDIT"),
+            self._templates.render(f"BUTTON_{scope.entity}_DEACTIVATE"),
+            self._templates.render(f"BUTTON_{scope.entity}_REACTIVATE"),
+            self._templates.render(f"BUTTON_{scope.entity}_RESET_LINK"),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _management_edit_menu_keyboard(self, scope: ManagementScope):
+        await self._refresh_templates()
+        return management_edit_menu_keyboard(
+            scope.name,
+            user_field_button_labels(self._templates, scope),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _management_confirm_keyboard(self, yes_data: str, scope: ManagementScope):
+        await self._refresh_templates()
+        return confirm_keyboard(
+            self._templates.render("BUTTON_CONFIRM_YES"),
+            self._templates.render("BUTTON_BACK"),
+            yes_data,
+            f"{scope.name}:back:detail",
+        )
+
+    async def _user_form_navigation_keyboard(self, field: str):
+        await self._refresh_templates()
+        return user_form_navigation_keyboard(
+            self._templates.render("BUTTON_PREVIOUS"),
+            self._templates.render("BUTTON_CANCEL"),
+            self._templates.render("BUTTON_SKIP") if field in OPTIONAL_FIELDS else None,
+        )
+
+    async def _user_form_review_keyboard(self):
+        await self._refresh_templates()
+        return user_form_review_keyboard(
+            self._templates.render("BUTTON_SAVE"),
+            self._templates.render("BUTTON_EDIT"),
+            self._templates.render("BUTTON_CANCEL"),
         )
 
     async def _send_activation_contact_prompt(self, update: Update) -> None:
@@ -1670,6 +2562,10 @@ class ReportFlow:
     async def _is_cancel_answer(self, text: str) -> bool:
         await self._refresh_templates()
         return text.strip().casefold() == self._templates.render("BUTTON_CANCEL").casefold()
+
+    async def _is_skip_answer(self, text: str) -> bool:
+        await self._refresh_templates()
+        return text.strip().casefold() == self._templates.render("BUTTON_SKIP").casefold()
 
     async def _is_start_answer(self, text: str) -> bool:
         await self._refresh_templates()
