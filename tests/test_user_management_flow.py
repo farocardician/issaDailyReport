@@ -228,17 +228,18 @@ def test_newly_created_user_can_activate_and_enter_report_flow() -> None:
     flow, chat, _sessions, users = _flow(users, Step.MANAGE_USERS_MENU)
 
     asyncio.run(flow.handle_callback(_callback_update(chat, "users:add"), SimpleNamespace()))
-    for text in ["Budi", "+6281280003276", "Lewati", "Lewati", "Simpan"]:
+    for text in ["Budi", "81280003276", "Lewati", "Lewati", "Simpan"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
 
     created = users.created[0]
+    assert created["phone"] == "081280003276"
     user_chat = _FakeChat(chat_id=100)
     user_sessions = _FakeSessions(Step.AWAITING_PHONE)
     user_flow = _report_flow(users, user_chat, user_sessions)
 
     asyncio.run(
         user_flow.handle_message(
-            _contact_update(user_chat, created["phone"], telegram_user_id=8),
+            _contact_update(user_chat, "+6281280003276", telegram_user_id=8),
             SimpleNamespace(),
         )
     )

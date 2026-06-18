@@ -14,13 +14,14 @@ OPTIONAL_FIELDS = {"email", "notes"}
 USER_ID_PATTERN = re.compile(r"^USR-\d{8}-\d{6}-\d{4}$")
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PHONE_ALLOWED_PATTERN = re.compile(r"^[\d\s+().-]+$")
+_PHONE_CANONICAL_PATTERN = re.compile(r"^0\d{8,14}$")
 _RANDOM = random.SystemRandom()
 
 
 @dataclass(frozen=True)
 class FieldResult:
     ok: bool
-    value: str | None
+    value: Any | None
     error_key: str | None
 
 
@@ -37,7 +38,7 @@ def validate_field(field: str, raw: str | None) -> FieldResult:
         if not _PHONE_ALLOWED_PATTERN.fullmatch(value):
             return FieldResult(False, None, "USER_ERROR_PHONE_INVALID")
         normalized_phone = normalize_phone(value)
-        if not normalized_phone:
+        if not _PHONE_CANONICAL_PATTERN.fullmatch(normalized_phone):
             return FieldResult(False, None, "USER_ERROR_PHONE_INVALID")
         return FieldResult(True, normalized_phone, None)
 

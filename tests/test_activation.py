@@ -8,6 +8,7 @@ from app.domain.activation import (
 
 def test_normalize_phone() -> None:
     assert normalize_phone("081280003276") == "081280003276"
+    assert normalize_phone("81280003276") == "081280003276"
     assert normalize_phone("6281280003276") == "081280003276"
     assert normalize_phone("+6281280003276") == "081280003276"
     assert normalize_phone("") == ""
@@ -21,6 +22,17 @@ def test_match_active_users_by_phone() -> None:
     ]
 
     assert match_active_users_by_phone(users, "+6281280003276") == [users[0]]
+
+
+def test_match_active_users_by_phone_canonicalizes_common_indonesia_formats() -> None:
+    users = [
+        {"user_id": "USR-1", "phone": "+6281280003276"},
+        {"user_id": "USR-2", "phone": "6281280003276"},
+        {"user_id": "USR-3", "phone": "081280003276"},
+        {"user_id": "USR-4", "phone": "81280003276"},
+    ]
+
+    assert match_active_users_by_phone(users, "+6281280003276") == users
 
 
 def test_match_active_users_by_phone_ignores_blank_shared_phone() -> None:

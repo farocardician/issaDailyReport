@@ -15,6 +15,7 @@ def test_normalize_role() -> None:
     assert normalize_role(" SUPER_ADMIN ") == Role.SUPER_ADMIN
     assert normalize_role("SUPERADMIN") == Role.SUPER_ADMIN
     assert normalize_role("super_admin") == Role.SUPER_ADMIN
+    assert normalize_role("super admin") == Role.SUPER_ADMIN
     assert normalize_role("SPG") == Role.USER
     assert normalize_role("USER") == Role.USER
     assert normalize_role("") == Role.USER

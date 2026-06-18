@@ -15,6 +15,9 @@ from app.bot.keyboards import (
     start_again_keyboard,
     start_location_keyboard,
     stock_issue_keyboard,
+    store_candidate_list_keyboard,
+    store_detail_keyboard,
+    store_list_keyboard,
     super_admin_menu_keyboard,
     user_detail_keyboard,
     user_edit_menu_keyboard,
@@ -22,6 +25,7 @@ from app.bot.keyboards import (
     user_form_review_keyboard,
     user_list_keyboard,
 )
+from app.domain.store_matching import StoreCandidate, StoreLocation
 
 
 def test_start_location_keyboard_includes_manual_store_button() -> None:
@@ -171,6 +175,50 @@ def test_user_detail_keyboard_inactive_user() -> None:
 
     assert keyboard["inline_keyboard"][1] == [
         {"callback_data": "users:reactivate:USR-1", "text": "Aktifkan Kembali"}
+    ]
+
+
+def test_store_management_list_keyboard() -> None:
+    keyboard = store_list_keyboard(
+        [_store("STR-1")],
+        {"STR-1": "VIZU - Aktif"},
+        "Kembali",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "stores:view:STR-1", "text": "VIZU - Aktif"}],
+        [{"callback_data": "stores:back:menu", "text": "Kembali"}],
+    ]
+
+
+def test_store_detail_keyboard_has_no_reset_link() -> None:
+    keyboard = store_detail_keyboard(
+        "STR-1",
+        True,
+        "Ubah Data",
+        "Nonaktifkan",
+        "Aktifkan Kembali",
+        "Kembali",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "stores:edit:STR-1", "text": "Ubah Data"}],
+        [{"callback_data": "stores:deactivate:STR-1", "text": "Nonaktifkan"}],
+        [{"callback_data": "stores:back:list", "text": "Kembali"}],
+    ]
+
+
+def test_store_candidate_list_keyboard_keeps_report_callbacks() -> None:
+    candidate = StoreCandidate(_store("STR-1"), 12.0, 100, True)
+    keyboard = store_candidate_list_keyboard(
+        [candidate],
+        {"STR-1": "VIZU (12 m)"},
+        other_store_label="Pilih toko lain",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "store:STR-1", "text": "VIZU (12 m)"}],
+        [{"callback_data": "manual:stores", "text": "Pilih toko lain"}],
     ]
 
 
@@ -330,3 +378,18 @@ def test_sales_edit_menu_keyboard() -> None:
         [{"callback_data": "sales_edit:sources", "text": "Tambah / Hapus Sumber Penjualan"}],
         [{"callback_data": "sales_edit:back", "text": "Kembali ke Ringkasan"}],
     ]
+
+
+def _store(store_id: str) -> StoreLocation:
+    return StoreLocation(
+        store_id=store_id,
+        department_store="Mall",
+        branch="Utama",
+        city="Jakarta",
+        brand="VIZU",
+        latitude=-6.2,
+        longitude=106.8,
+        allowed_radius_meter=100,
+        status="Aktif",
+        notes=None,
+    )

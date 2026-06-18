@@ -107,22 +107,6 @@ def test_menu_report_callback_enters_report_flow(step: Step, role: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("step", "role", "data"),
-    [
-        (Step.SUPER_ADMIN_MENU, "SUPER_ADMIN", "menu:stores"),
-    ],
-)
-def test_management_menu_callbacks_send_placeholder(step: Step, role: str, data: str) -> None:
-    user = _user("USR-1", "Ani", "081280003276", role=role, telegram_user_id=7)
-    flow, chat, sessions, _users = _flow(_FakeUsers(linked_users=[user]), step=step)
-
-    asyncio.run(flow.handle_callback(_callback_update(chat, data), SimpleNamespace()))
-
-    assert sessions.session["current_step"] == step.value
-    assert chat.sent_messages[-1]["text"] == "MENU_PLACEHOLDER"
-
-
-@pytest.mark.parametrize(
     ("step", "role"),
     [(Step.ADMIN_MENU, "ADMIN"), (Step.SUPER_ADMIN_MENU, "SUPER_ADMIN")],
 )
@@ -148,6 +132,17 @@ def test_menu_admins_callback_opens_manage_admins_menu() -> None:
     assert _callback_data(chat.sent_messages[-1]) == ["admins:add", "admins:list", "admins:back:menu"]
 
 
+def test_menu_stores_callback_opens_manage_stores_menu() -> None:
+    user = _user("USR-1", "Ani", "081280003276", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _users = _flow(_FakeUsers(linked_users=[user]), step=Step.SUPER_ADMIN_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "menu:stores"), SimpleNamespace()))
+
+    assert sessions.session["current_step"] == Step.MANAGE_STORES_MENU.value
+    assert chat.sent_messages[-1]["text"] == "MANAGE_STORES_MENU"
+    assert _callback_data(chat.sent_messages[-1]) == ["stores:add", "stores:list", "stores:back:menu"]
+
+
 def test_inactive_linked_user_start_asks_for_contact() -> None:
     user = _user("USR-1", "Ani", "081280003276", role="SUPER_ADMIN", telegram_user_id=7, status="Nonaktif")
     flow, chat, sessions, _users = _flow(_FakeUsers(linked_users=[user]))
@@ -165,6 +160,20 @@ def test_super_admin_menu_admin_actor_cannot_manage_admins() -> None:
     asyncio.run(flow.handle_callback(_callback_update(chat, "menu:admins"), SimpleNamespace()))
 
     assert sessions.session["current_step"] == Step.SUPER_ADMIN_MENU.value
+    assert chat.sent_messages[-1]["text"] == "MENU_ACCESS_DENIED"
+
+
+@pytest.mark.parametrize(
+    ("step", "role"),
+    [(Step.ADMIN_MENU, "ADMIN"), (Step.SUPER_ADMIN_MENU, "USER")],
+)
+def test_menu_stores_callback_denies_non_super_admin(step: Step, role: str) -> None:
+    user = _user("USR-1", "Ani", "081280003276", role=role, telegram_user_id=7)
+    flow, chat, sessions, _users = _flow(_FakeUsers(linked_users=[user]), step=step)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "menu:stores"), SimpleNamespace()))
+
+    assert sessions.session["current_step"] == step.value
     assert chat.sent_messages[-1]["text"] == "MENU_ACCESS_DENIED"
 
 
@@ -218,6 +227,7 @@ def _templates() -> dict[str, str]:
         "MENU_ACCESS_DENIED": "MENU_ACCESS_DENIED",
         "MANAGE_USERS_MENU": "MANAGE_USERS_MENU",
         "MANAGE_ADMINS_MENU": "MANAGE_ADMINS_MENU",
+        "MANAGE_STORES_MENU": "MANAGE_STORES_MENU",
         "BUTTON_SHARE_LOCATION": "Bagikan Lokasi",
         "BUTTON_SHARE_CONTACT": "Bagikan Nomor HP",
         "BUTTON_START": "Mulai",
@@ -230,6 +240,8 @@ def _templates() -> dict[str, str]:
         "BUTTON_USER_LIST": "Daftar User",
         "BUTTON_ADMIN_ADD": "Tambah Admin",
         "BUTTON_ADMIN_LIST": "Daftar Admin",
+        "BUTTON_STORE_ADD": "Tambah Store",
+        "BUTTON_STORE_LIST": "Daftar Store",
         "BUTTON_BACK": "Kembali",
         "PROGRESS_MAIN_LABEL": "Langkah",
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",

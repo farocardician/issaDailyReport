@@ -24,6 +24,8 @@ def normalize_phone(raw: str | None) -> str:
     digits = "".join(character for character in raw if character.isdigit())
     if digits.startswith("62"):
         return f"0{digits[2:]}"
+    if digits.startswith("8"):
+        return f"0{digits}"
     return digits
 
 

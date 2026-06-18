@@ -211,17 +211,18 @@ def test_newly_created_admin_can_activate_and_land_on_admin_menu() -> None:
     flow, chat, _sessions, users = _flow(users, Step.MANAGE_ADMINS_MENU)
 
     asyncio.run(flow.handle_callback(_callback_update(chat, "admins:add"), SimpleNamespace()))
-    for text in ["Adi Admin", "+6281280003276", "Lewati", "Lewati", "Simpan"]:
+    for text in ["Adi Admin", "81280003276", "Lewati", "Lewati", "Simpan"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
 
     created = users.created[0]
+    assert created["phone"] == "081280003276"
     admin_chat = _FakeChat(chat_id=100)
     admin_sessions = _FakeSessions(Step.AWAITING_PHONE)
     admin_flow = _report_flow(users, admin_chat, admin_sessions)
 
     asyncio.run(
         admin_flow.handle_message(
-            _contact_update(admin_chat, created["phone"], telegram_user_id=8),
+            _contact_update(admin_chat, "+6281280003276", telegram_user_id=8),
             SimpleNamespace(),
         )
     )

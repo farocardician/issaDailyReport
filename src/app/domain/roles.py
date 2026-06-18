@@ -10,7 +10,7 @@ class Role(StrEnum):
 
 
 def normalize_role(raw: str | None) -> Role:
-    value = raw.strip().upper() if raw is not None else ""
+    value = "_".join(raw.strip().upper().replace("_", " ").split()) if raw is not None else ""
     if value == Role.ADMIN.value:
         return Role.ADMIN
     if value in {Role.SUPER_ADMIN.value, "SUPERADMIN"}:

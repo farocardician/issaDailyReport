@@ -225,7 +225,7 @@ def confirm_store_keyboard(yes_label: str, other_store_label: str) -> InlineKeyb
     )
 
 
-def store_list_keyboard(
+def store_candidate_list_keyboard(
     candidates: Sequence[StoreCandidate],
     candidate_labels: Mapping[str, str],
     other_store_label: str | None = None,
@@ -242,6 +242,38 @@ def store_list_keyboard(
     if other_store_label is not None:
         rows.append([InlineKeyboardButton(other_store_label, callback_data="manual:stores")])
     return InlineKeyboardMarkup(rows)
+
+
+def store_list_keyboard(
+    stores: Sequence[StoreLocation],
+    labels: Mapping[str, str],
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(labels[store.store_id], callback_data=f"stores:view:{store.store_id}")]
+        for store in stores
+    ]
+    rows.append([InlineKeyboardButton(back_label, callback_data="stores:back:menu")])
+    return InlineKeyboardMarkup(rows)
+
+
+def store_detail_keyboard(
+    store_id: str,
+    is_active: bool,
+    edit_label: str,
+    deactivate_label: str,
+    reactivate_label: str,
+    back_label: str,
+) -> InlineKeyboardMarkup:
+    status_label = deactivate_label if is_active else reactivate_label
+    status_action = "deactivate" if is_active else "reactivate"
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(edit_label, callback_data=f"stores:edit:{store_id}")],
+            [InlineKeyboardButton(status_label, callback_data=f"stores:{status_action}:{store_id}")],
+            [InlineKeyboardButton(back_label, callback_data="stores:back:list")],
+        ]
+    )
 
 
 def manual_store_list_keyboard(stores: Sequence[StoreLocation], store_labels: Mapping[str, str]) -> InlineKeyboardMarkup:

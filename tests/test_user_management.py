@@ -19,14 +19,21 @@ def test_validate_name() -> None:
 
 def test_validate_phone_normalizes_and_rejects_invalid_values() -> None:
     assert validate_field("phone", "+6281280003276").value == "081280003276"
+    assert validate_field("phone", "81280003276").value == "081280003276"
 
     required = validate_field("phone", "")
     invalid = validate_field("phone", "abc")
+    too_short = validate_field("phone", "08123456")
+    too_long = validate_field("phone", "0812345678901234")
 
     assert required.ok is False
     assert required.error_key == "USER_ERROR_PHONE_REQUIRED"
     assert invalid.ok is False
     assert invalid.error_key == "USER_ERROR_PHONE_INVALID"
+    assert too_short.ok is False
+    assert too_short.error_key == "USER_ERROR_PHONE_INVALID"
+    assert too_long.ok is False
+    assert too_long.error_key == "USER_ERROR_PHONE_INVALID"
 
 
 def test_validate_email_optional_and_format_checked() -> None:
@@ -58,6 +65,20 @@ def test_duplicate_phone_checks_all_roles_and_statuses_with_exclude_self() -> No
     assert is_duplicate_phone(users, "081277700011", None) is True
     assert is_duplicate_phone(users, "081280003276", "USR-1") is False
     assert is_duplicate_phone(users, "081200000000", None) is False
+
+
+def test_duplicate_phone_uses_shared_canonical_normalization() -> None:
+    users = [
+        {"user_id": "USR-1", "role": "USER", "phone": "+6281280003276"},
+        {"user_id": "USR-2", "role": "ADMIN", "phone": "6281290003276"},
+        {"user_id": "USR-3", "role": "SUPER_ADMIN", "phone": "081230003276"},
+        {"user_id": "USR-4", "role": "USER", "phone": "81240003276"},
+    ]
+
+    assert is_duplicate_phone(users, "081280003276", None) is True
+    assert is_duplicate_phone(users, "081290003276", None) is True
+    assert is_duplicate_phone(users, "+6281230003276", None) is True
+    assert is_duplicate_phone(users, "6281240003276", None) is True
 
 
 def test_generate_user_id_format() -> None:

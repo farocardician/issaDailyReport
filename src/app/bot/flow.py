@@ -28,6 +28,8 @@ from app.bot.keyboards import (
     start_again_keyboard,
     stock_issue_keyboard,
     start_location_keyboard,
+    store_candidate_list_keyboard,
+    store_detail_keyboard,
     store_list_keyboard,
     super_admin_menu_keyboard,
     summary_keyboard,
@@ -59,6 +61,13 @@ from app.bot.stock_issue_text import (
     selected_issue_text,
     sku_list_text,
 )
+from app.bot.store_text import (
+    store_detail_tokens,
+    store_field_button_labels,
+    store_field_prompt_key,
+    store_form_review_tokens,
+    store_list_button_labels,
+)
 from app.bot.user_admin_text import (
     user_detail_tokens,
     user_field_button_labels,
@@ -85,9 +94,16 @@ from app.domain.roles import (
 from app.domain.sales_sources import GmvSource, input_plan, source_fields
 from app.domain.session_state import Step, next_step
 from app.domain.stock_issues import StockIssue
+from app.domain.store_management import (
+    OPTIONAL_FIELDS as STORE_OPTIONAL_FIELDS,
+    STORE_FORM_FIELDS,
+    generate_store_id,
+    is_duplicate_identity,
+    validate_store_field,
+)
 from app.domain.store_matching import MatchType, StoreCandidate, StoreLocation, match_stores
 from app.domain.user_management import (
-    OPTIONAL_FIELDS,
+    OPTIONAL_FIELDS as USER_OPTIONAL_FIELDS,
     USER_FORM_FIELDS,
     generate_user_id,
     is_duplicate_phone,
@@ -123,6 +139,14 @@ MANAGEMENT_CALLBACK_STEPS = {
     Step.USER_EDIT_MENU,
     Step.USER_CONFIRM_STATUS,
     Step.USER_CONFIRM_RESET_LINK,
+}
+
+STORE_CALLBACK_STEPS = {
+    Step.MANAGE_STORES_MENU,
+    Step.STORE_LIST,
+    Step.STORE_DETAIL,
+    Step.STORE_EDIT_MENU,
+    Step.STORE_CONFIRM_STATUS,
 }
 
 class ReportFlow:
@@ -208,6 +232,10 @@ class ReportFlow:
                 await self._send(update, "UNKNOWN_COMMAND")
                 return
             await self._handle_user_form_review_text(update, session, scope)
+        elif step == Step.STORE_FORM_INPUT:
+            await self._handle_store_form_input_text(update, session)
+        elif step == Step.STORE_FORM_REVIEW:
+            await self._handle_store_form_review_text(update, session)
         elif step in TEXT_STEPS:
             await self._handle_text(update, session, step)
         else:
@@ -259,6 +287,8 @@ class ReportFlow:
             await self._handle_super_admin_menu_callback(update, session, data)
         elif step in MANAGEMENT_CALLBACK_STEPS and data.startswith(("users:", "admins:")):
             await self._handle_management_callback(update, session, data)
+        elif step in STORE_CALLBACK_STEPS and data.startswith("stores:"):
+            await self._handle_store_callback(update, session, data)
         else:
             await self._send(update, "UNKNOWN_COMMAND")
 
@@ -386,7 +416,7 @@ class ReportFlow:
                 update,
                 "MULTIPLE_STORES_FOUND",
                 area_label=self._area_label(match.candidates),
-                reply_markup=store_list_keyboard(
+                reply_markup=store_candidate_list_keyboard(
                     match.candidates,
                     await self._candidate_button_labels(match.candidates),
                     other_store_label=self._templates.render("BUTTON_OTHER_STORE"),
@@ -1152,7 +1182,7 @@ class ReportFlow:
                 return
             await self._open_management_menu(update, actor, SCOPE_USERS)
             return
-        if data == "menu:admins":
+        if data in {"menu:admins", "menu:stores"}:
             await self._send(update, "MENU_ACCESS_DENIED")
             return
 
@@ -1189,7 +1219,7 @@ class ReportFlow:
             if not can_manage_stores(role):
                 await self._send(update, "MENU_ACCESS_DENIED")
                 return
-            await self._send(update, "MENU_PLACEHOLDER")
+            await self._open_store_menu(update, actor)
             return
 
         await self._send(update, "UNKNOWN_COMMAND")
@@ -1494,7 +1524,7 @@ class ReportFlow:
             return
 
         field = str(plan[pos])
-        raw_value = "-" if field in OPTIONAL_FIELDS and await self._is_skip_answer(text) else text
+        raw_value = "-" if field in USER_OPTIONAL_FIELDS and await self._is_skip_answer(text) else text
         result = validate_field(field, raw_value)
         if not result.ok:
             await self._send_management_form_prompt(update, form, scope, result.error_key)
@@ -1912,6 +1942,596 @@ class ReportFlow:
             **user_form_review_tokens(dict(form.get("fields", {}))),
         )
 
+    async def _authorize_stores(self, update: Update) -> dict[str, Any] | None:
+        actor = await self._current_actor(update)
+        if actor is None or not can_manage_stores(normalize_role(actor.get("role"))):
+            await self._send(update, "MENU_ACCESS_DENIED")
+            return None
+        return actor
+
+    async def _load_store_target(self, update: Update, store_id: str) -> StoreLocation | None:
+        store = await self._stores.get_by_id(store_id)
+        if store is None:
+            await self._send(update, "MENU_ACCESS_DENIED")
+            return None
+        return store
+
+    async def _ensure_store_form_target_allowed(
+        self,
+        update: Update,
+        form: dict[str, Any],
+    ) -> bool:
+        if form.get("mode") != "edit":
+            return True
+        return await self._load_store_target(update, str(form.get("target_id", ""))) is not None
+
+    async def _handle_store_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        actor = await self._authorize_stores(update)
+        if actor is None:
+            return
+
+        if data == "stores:add":
+            await self._start_store_add_form(update, actor)
+            return
+        if data == "stores:list":
+            await self._open_store_list(update, actor)
+            return
+        if data.startswith("stores:view:"):
+            await self._open_store_detail(update, actor, data.removeprefix("stores:view:"))
+            return
+        if data.startswith("stores:edit:"):
+            await self._open_store_edit_menu(update, actor, data.removeprefix("stores:edit:"))
+            return
+        if data.startswith("stores:field:"):
+            await self._start_store_field_input(
+                update,
+                actor,
+                session,
+                data.removeprefix("stores:field:"),
+            )
+            return
+        if data.startswith("stores:deactivate:"):
+            await self._open_store_status_confirmation(
+                update,
+                actor,
+                data.removeprefix("stores:deactivate:"),
+                "deactivate",
+            )
+            return
+        if data.startswith("stores:reactivate:"):
+            await self._open_store_status_confirmation(
+                update,
+                actor,
+                data.removeprefix("stores:reactivate:"),
+                "reactivate",
+            )
+            return
+        if data == "stores:confirm_status":
+            await self._confirm_store_status(update, actor, session)
+            return
+        if data == "stores:back:menu":
+            if Step(session["current_step"]) == Step.MANAGE_STORES_MENU:
+                await self._return_to_actor_menu(update, actor)
+                return
+            await self._open_store_menu(update, actor)
+            return
+        if data == "stores:back:list":
+            await self._open_store_list(update, actor)
+            return
+        if data == "stores:back:detail":
+            await self._handle_store_back_to_detail(update, actor, session)
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _open_store_menu(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        notice_key: str | None = None,
+    ) -> None:
+        await self._persist(update, Step.MANAGE_STORES_MENU, {"user_name": actor["name"]}, user_id=actor["user_id"])
+        await self._send_store_menu(update, notice_key)
+
+    async def _open_store_list(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        notice_key: str | None = None,
+    ) -> None:
+        await self._persist(update, Step.STORE_LIST, {"user_name": actor["name"]}, user_id=actor["user_id"])
+        await self._send_store_list(update, notice_key)
+
+    async def _open_store_detail(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        target_id: str,
+        notice_key: str | None = None,
+    ) -> None:
+        store = await self._load_store_target(update, target_id)
+        if store is None:
+            return
+
+        await self._persist(
+            update,
+            Step.STORE_DETAIL,
+            {"user_name": actor["name"], "store_target_id": store.store_id},
+            user_id=actor["user_id"],
+        )
+        await self._send_store_detail(update, store, notice_key)
+
+    async def _start_store_add_form(self, update: Update, actor: dict[str, Any]) -> None:
+        form = {
+            "mode": "add",
+            "fields": {},
+            "plan": list(STORE_FORM_FIELDS),
+            "pos": 0,
+        }
+        await self._remove_callback_keyboard(update)
+        await self._persist(
+            update,
+            Step.STORE_FORM_INPUT,
+            {"user_name": actor["name"], "store_form": form},
+            user_id=actor["user_id"],
+        )
+        await self._send_store_form_prompt(update, form)
+
+    async def _open_store_edit_menu(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        target_id: str,
+        back_to_review: bool = False,
+    ) -> None:
+        store = await self._load_store_target(update, target_id)
+        if store is None:
+            return
+        form = {
+            "mode": "edit",
+            "target_id": store.store_id,
+            "fields": _store_fields_from_location(store),
+            "edit_menu_back": "review" if back_to_review else "detail",
+        }
+        await self._persist(
+            update,
+            Step.STORE_EDIT_MENU,
+            {"user_name": actor["name"], "store_target_id": store.store_id, "store_form": form},
+            user_id=actor["user_id"],
+        )
+        await self._send_store_edit_menu(update)
+
+    async def _start_store_field_input(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+        field: str,
+    ) -> None:
+        if field not in STORE_FORM_FIELDS:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        if not form:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+        form["plan"] = [field]
+        form["pos"] = 0
+        form["return_to"] = "review"
+        draft["store_form"] = form
+        await self._remove_callback_keyboard(update)
+        await self._persist(
+            update,
+            Step.STORE_FORM_INPUT,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_store_form_prompt(update, form)
+
+    async def _handle_store_form_input_text(self, update: Update, session: dict[str, Any]) -> None:
+        actor = await self._authorize_stores(update)
+        if actor is None:
+            return
+
+        text = _message_text(update)
+        if text is None:
+            await self._send_store_form_prompt(update, dict(session["draft_report"]).get("store_form", {}))
+            return
+
+        text = text.strip()
+        if await self._is_cancel_answer(text):
+            await self._cancel(update)
+            return
+        if await self._is_previous_answer(text):
+            await self._handle_store_form_previous(update, actor, session)
+            return
+
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan):
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+
+        field = str(plan[pos])
+        raw_value = "-" if field in STORE_OPTIONAL_FIELDS and await self._is_skip_answer(text) else text
+        result = validate_store_field(field, raw_value)
+        if not result.ok:
+            await self._send_store_form_prompt(update, form, result.error_key)
+            return
+
+        fields = dict(form.get("fields", {}))
+        fields[field] = result.value
+        form["fields"] = fields
+        pos += 1
+        if pos >= len(plan):
+            form.pop("plan", None)
+            form.pop("pos", None)
+            draft["store_form"] = form
+            await self._persist(
+                update,
+                Step.STORE_FORM_REVIEW,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_store_form_review(update, form)
+            return
+
+        form["pos"] = pos
+        draft["store_form"] = form
+        await self._persist(
+            update,
+            Step.STORE_FORM_INPUT,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_store_form_prompt(update, form)
+
+    async def _handle_store_form_previous(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        pos = int(form.get("pos", 0))
+        if pos > 0:
+            form["pos"] = pos - 1
+            draft["store_form"] = form
+            await self._persist(
+                update,
+                Step.STORE_FORM_INPUT,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_store_form_prompt(update, form)
+            return
+
+        if form.get("mode") == "edit":
+            await self._open_store_detail(update, actor, str(form["target_id"]))
+            return
+        await self._open_store_menu(update, actor)
+
+    async def _handle_store_form_review_text(self, update: Update, session: dict[str, Any]) -> None:
+        actor = await self._authorize_stores(update)
+        if actor is None:
+            return
+
+        text = _message_text(update)
+        if text is None:
+            await self._send_store_form_review(update, dict(session["draft_report"]).get("store_form", {}))
+            return
+
+        answer = text.strip().casefold()
+        await self._refresh_templates()
+        if answer == self._templates.render("BUTTON_SAVE").casefold():
+            await self._save_store_form(update, actor, session)
+            return
+        if answer == self._templates.render("BUTTON_EDIT").casefold():
+            await self._open_store_review_edit_menu(update, actor, session)
+            return
+        if answer == self._templates.render("BUTTON_CANCEL").casefold():
+            await self._cancel(update)
+            return
+
+        await self._send_store_form_review(update, dict(session["draft_report"]).get("store_form", {}))
+
+    async def _open_store_review_edit_menu(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        if not form:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+        form["edit_menu_back"] = "review"
+        draft["store_form"] = form
+        await self._persist(
+            update,
+            Step.STORE_EDIT_MENU,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_store_edit_menu(update)
+
+    async def _save_store_form(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+    ) -> None:
+        form = dict(dict(session["draft_report"]).get("store_form", {}))
+        fields = dict(form.get("fields", {}))
+        validation_error = self._validate_store_form_for_save(fields)
+        if validation_error is not None:
+            field, error_key = validation_error
+            form["plan"] = [field]
+            form["pos"] = 0
+            draft = dict(session["draft_report"])
+            draft["store_form"] = form
+            await self._persist(
+                update,
+                Step.STORE_FORM_INPUT,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_store_form_prompt(update, form, error_key)
+            return
+
+        form["fields"] = fields
+        if form.get("mode") == "edit":
+            target = await self._load_store_target(update, str(form["target_id"]))
+            if target is None:
+                return
+            if target.status == self._settings.active_status and await self._store_identity_exists(
+                fields,
+                exclude_store_id=target.store_id,
+            ):
+                await self._send_store_form_review(update, form, "STORE_ERROR_DUPLICATE_IDENTITY")
+                return
+            await self._stores.update_store(
+                target.store_id,
+                str(fields["brand"]),
+                str(fields["department_store"]),
+                str(fields["branch"]),
+                str(fields["city"]),
+                float(fields["latitude"]),
+                float(fields["longitude"]),
+                int(fields["allowed_radius"]),
+                fields.get("notes"),
+            )
+            await self._open_store_detail(update, actor, target.store_id, "STORE_UPDATED")
+            return
+
+        if await self._store_identity_exists(fields, exclude_store_id=None):
+            await self._send_store_form_review(update, form, "STORE_ERROR_DUPLICATE_IDENTITY")
+            return
+
+        await self._create_store_with_retry(fields)
+        await self._open_store_menu(update, actor, "STORE_ADDED")
+
+    def _validate_store_form_for_save(self, fields: dict[str, Any]) -> tuple[str, str] | None:
+        for field in STORE_FORM_FIELDS:
+            result = validate_store_field(field, fields.get(field))
+            if not result.ok:
+                return field, str(result.error_key)
+            fields[field] = result.value
+        return None
+
+    async def _store_identity_exists(self, fields: dict[str, Any], exclude_store_id: str | None) -> bool:
+        return is_duplicate_identity(
+            await self._stores.list_active(self._settings.active_status),
+            str(fields["brand"]),
+            str(fields["department_store"]),
+            str(fields["branch"]),
+            str(fields["city"]),
+            exclude_store_id,
+        )
+
+    async def _create_store_with_retry(self, fields: dict[str, Any]) -> str:
+        for _ in range(10):
+            store_id = generate_store_id(self._now())
+            if await self._stores.get_by_id(store_id) is not None:
+                continue
+            await self._stores.create_store(
+                store_id,
+                str(fields["brand"]),
+                str(fields["department_store"]),
+                str(fields["branch"]),
+                str(fields["city"]),
+                float(fields["latitude"]),
+                float(fields["longitude"]),
+                int(fields["allowed_radius"]),
+                fields.get("notes"),
+                self._settings.active_status,
+            )
+            return store_id
+        raise RuntimeError("Unable to generate a unique store_id")
+
+    async def _open_store_status_confirmation(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        target_id: str,
+        intent: str,
+    ) -> None:
+        store = await self._load_store_target(update, target_id)
+        if store is None:
+            return
+
+        draft = {
+            "user_name": actor["name"],
+            "store_target_id": store.store_id,
+            "store_status_intent": intent,
+        }
+        await self._persist(update, Step.STORE_CONFIRM_STATUS, draft, user_id=actor["user_id"])
+        key = "STORE_CONFIRM_DEACTIVATE" if intent == "deactivate" else "STORE_CONFIRM_REACTIVATE"
+        await self._send_store_confirmation(update, key, store, "stores:confirm_status")
+
+    async def _confirm_store_status(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+    ) -> None:
+        draft = dict(session["draft_report"])
+        store = await self._load_store_target(update, str(draft.get("store_target_id", "")))
+        if store is None:
+            return
+
+        intent = draft.get("store_status_intent")
+        if intent == "deactivate":
+            status = self._settings.inactive_status
+            notice_key = "STORE_DEACTIVATED"
+        elif intent == "reactivate":
+            if await self._store_identity_exists(_store_fields_from_location(store), exclude_store_id=store.store_id):
+                await self._open_store_detail(update, actor, store.store_id, "STORE_ERROR_DUPLICATE_IDENTITY")
+                return
+            status = self._settings.active_status
+            notice_key = "STORE_REACTIVATED"
+        else:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        await self._stores.set_status(store.store_id, status)
+        await self._open_store_detail(update, actor, store.store_id, notice_key)
+
+    async def _handle_store_back_to_detail(
+        self,
+        update: Update,
+        actor: dict[str, Any],
+        session: dict[str, Any],
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        if Step(session["current_step"]) == Step.STORE_EDIT_MENU and form.get("edit_menu_back") == "review":
+            await self._persist(
+                update,
+                Step.STORE_FORM_REVIEW,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            await self._send_store_form_review(update, form)
+            return
+
+        target_id = str(draft.get("store_target_id") or form.get("target_id") or "")
+        if not target_id:
+            await self._open_store_menu(update, actor)
+            return
+        await self._open_store_detail(update, actor, target_id)
+
+    async def _send_store_menu(self, update: Update, notice_key: str | None = None) -> None:
+        await self._send_or_edit(
+            update,
+            "MANAGE_STORES_MENU",
+            reply_markup=await self._store_management_menu_keyboard(),
+            notice=await self._notice_text(notice_key),
+        )
+
+    async def _send_store_list(self, update: Update, notice_key: str | None = None) -> None:
+        stores = await self._stores.list_all()
+        key = "STORE_LIST" if stores else "STORE_LIST_EMPTY"
+        await self._send_or_edit(
+            update,
+            key,
+            reply_markup=await self._store_management_list_keyboard(stores),
+            notice=await self._notice_text(notice_key),
+        )
+
+    async def _send_store_detail(
+        self,
+        update: Update,
+        store: StoreLocation,
+        notice_key: str | None = None,
+    ) -> None:
+        await self._refresh_templates()
+        await self._send_or_edit(
+            update,
+            "STORE_DETAIL",
+            reply_markup=await self._store_management_detail_keyboard(store),
+            **store_detail_tokens(self._templates, store, await self._notice_text(notice_key)),
+        )
+
+    async def _send_store_edit_menu(self, update: Update) -> None:
+        await self._send_or_edit(
+            update,
+            "STORE_EDIT_MENU",
+            reply_markup=await self._store_management_edit_menu_keyboard(),
+        )
+
+    async def _send_store_confirmation(
+        self,
+        update: Update,
+        key: str,
+        store: StoreLocation,
+        yes_data: str,
+    ) -> None:
+        await self._refresh_templates()
+        await self._send_or_edit(
+            update,
+            key,
+            reply_markup=await self._store_confirm_keyboard(yes_data),
+            **store_detail_tokens(self._templates, store),
+        )
+
+    async def _send_store_form_prompt(
+        self,
+        update: Update,
+        form: dict[str, Any],
+        error_key: str | None = None,
+    ) -> None:
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan):
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        field = str(plan[pos])
+        await self._send_trusted(
+            update,
+            store_field_prompt_key(field),
+            {"error"},
+            error=await self._notice_text(error_key),
+            reply_markup=await self._store_form_navigation_keyboard(field),
+        )
+
+    async def _send_store_form_review(
+        self,
+        update: Update,
+        form: dict[str, Any],
+        notice_key: str | None = None,
+    ) -> None:
+        await self._send(
+            update,
+            "STORE_FORM_REVIEW",
+            reply_markup=await self._user_form_review_keyboard(),
+            **store_form_review_tokens(dict(form.get("fields", {})), await self._notice_text(notice_key)),
+        )
+
     async def _sales_source_selected_text(self, draft: dict[str, Any]) -> str:
         selected_ids = list(draft.get("sales_source_ids", []))
         active_sources = {source.gmv_source_id: source for source in await self._active_sales_sources()}
@@ -2001,7 +2621,7 @@ class ReportFlow:
         )
         if has_submitted_location:
             candidates = await self._all_active_candidates_from_draft(draft)
-            reply_markup = store_list_keyboard(candidates, await self._candidate_button_labels(candidates))
+            reply_markup = store_candidate_list_keyboard(candidates, await self._candidate_button_labels(candidates))
         else:
             stores = await self._stores.list_active(self._settings.active_status)
             reply_markup = manual_store_list_keyboard(stores, await self._store_labels(stores))
@@ -2358,12 +2978,65 @@ class ReportFlow:
             f"{scope.name}:back:detail",
         )
 
+    async def _store_management_menu_keyboard(self):
+        await self._refresh_templates()
+        return management_menu_keyboard(
+            "stores",
+            self._templates.render("BUTTON_STORE_ADD"),
+            self._templates.render("BUTTON_STORE_LIST"),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _store_management_list_keyboard(self, stores: list[StoreLocation]):
+        await self._refresh_templates()
+        return store_list_keyboard(
+            stores,
+            store_list_button_labels(self._templates, stores),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _store_management_detail_keyboard(self, store: StoreLocation):
+        await self._refresh_templates()
+        return store_detail_keyboard(
+            store.store_id,
+            store.status == self._settings.active_status,
+            self._templates.render("BUTTON_STORE_EDIT"),
+            self._templates.render("BUTTON_STORE_DEACTIVATE"),
+            self._templates.render("BUTTON_STORE_REACTIVATE"),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _store_management_edit_menu_keyboard(self):
+        await self._refresh_templates()
+        return management_edit_menu_keyboard(
+            "stores",
+            store_field_button_labels(self._templates),
+            self._templates.render("BUTTON_BACK"),
+        )
+
+    async def _store_confirm_keyboard(self, yes_data: str):
+        await self._refresh_templates()
+        return confirm_keyboard(
+            self._templates.render("BUTTON_CONFIRM_YES"),
+            self._templates.render("BUTTON_BACK"),
+            yes_data,
+            "stores:back:detail",
+        )
+
+    async def _store_form_navigation_keyboard(self, field: str):
+        await self._refresh_templates()
+        return user_form_navigation_keyboard(
+            self._templates.render("BUTTON_PREVIOUS"),
+            self._templates.render("BUTTON_CANCEL"),
+            self._templates.render("BUTTON_SKIP") if field in STORE_OPTIONAL_FIELDS else None,
+        )
+
     async def _user_form_navigation_keyboard(self, field: str):
         await self._refresh_templates()
         return user_form_navigation_keyboard(
             self._templates.render("BUTTON_PREVIOUS"),
             self._templates.render("BUTTON_CANCEL"),
-            self._templates.render("BUTTON_SKIP") if field in OPTIONAL_FIELDS else None,
+            self._templates.render("BUTTON_SKIP") if field in USER_OPTIONAL_FIELDS else None,
         )
 
     async def _user_form_review_keyboard(self):
@@ -2608,6 +3281,20 @@ def _candidate_distances(candidates: list[StoreCandidate]) -> dict[str, dict[str
         }
         for candidate in candidates
     }
+
+
+def _store_fields_from_location(store: StoreLocation) -> dict[str, Any]:
+    return {
+        "brand": store.brand,
+        "department_store": store.department_store,
+        "branch": store.branch,
+        "city": store.city,
+        "latitude": store.latitude,
+        "longitude": store.longitude,
+        "allowed_radius": store.allowed_radius_meter,
+        "notes": store.notes,
+    }
+
 
 def _message_text(update: Update) -> str | None:
     if update.message is None or update.message.text is None:
