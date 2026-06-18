@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     webhook_listen_port: int = 8080
     default_radius_meter: int = 100
     active_status: str = "Aktif"
+    inactive_status: str = "Nonaktif"
     session_ttl_minutes: int = 30
     app_tz: str = "Asia/Jakarta"
     cloudflare_tunnel_token: str = ""

@@ -1,0 +1,21 @@
+Option_ID,Option_Type,Label,Sort_Order,Status
+BRAND-01,brand,Vivi Zubedi,1,Aktif
+BRAND-02,brand,No Brand,2,Aktif
+BRAND-03,brand,Mayyech,3,Aktif
+DEPT-01,department_store,Sogo,1,Aktif
+DEPT-02,department_store,Central,2,Aktif
+DEPT-03,department_store,Metro,3,Aktif
+DEPT-04,department_store,Seibu,4,Aktif
+DEPT-05,department_store,Partner,5,Aktif
+DEPT-06,department_store,Reseller,6,Aktif
+BRANCH-01,branch,Central,1,Aktif
+BRANCH-02,branch,GL,2,Aktif
+BRANCH-03,branch,Karawaci,3,Aktif
+BRANCH-04,branch,Kota Kasablanka,4,Aktif
+BRANCH-05,branch,Pakuwon,5,Aktif
+BRANCH-06,branch,Paris Van Java,6,Aktif
+BRANCH-07,branch,Plaza Senayan,7,Aktif
+BRANCH-08,branch,Pondok Indah Mall,8,Aktif
+BRANCH-09,branch,Seibu,9,Aktif
+BRANCH-10,branch,Tunjungan Plaza,10,Aktif
+BRANCH-11,branch,Miss Annisa,11,Aktif
