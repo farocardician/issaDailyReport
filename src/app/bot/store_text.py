@@ -9,7 +9,7 @@ from app.templates import MessageTemplates
 
 FIELD_KEY_SUFFIXES = {
     "brand": "BRAND",
-    "department_store": "DEPARTMENT",
+    "outlet": "OUTLET",
     "branch": "BRANCH",
     "city": "CITY",
     "latitude": "LATITUDE",
@@ -28,7 +28,7 @@ def store_list_button_labels(
             "STORE_LIST_BUTTON",
             store_label=templates.render_store_label(store),
             brand=store.brand,
-            department_store=store.department_store,
+            outlet=store.outlet,
             branch=store.branch,
             city=store.city,
             status=store.status,
@@ -43,7 +43,7 @@ def store_detail_tokens(templates: MessageTemplates, store: StoreLocation, notic
         "store_id": _value(store.store_id),
         "store_label": templates.render_store_label(store),
         "brand": _value(store.brand),
-        "department_store": _value(store.department_store),
+        "outlet": _value(store.outlet),
         "branch": _value(store.branch),
         "city": _value(store.city),
         "latitude": _value(store.latitude),
@@ -58,7 +58,7 @@ def store_form_review_tokens(fields: Mapping[str, Any], notice: str = "") -> dic
     return {
         "notice": notice,
         "brand": _value(fields.get("brand")),
-        "department_store": _value(fields.get("department_store")),
+        "outlet": _value(fields.get("outlet")),
         "branch": _value(fields.get("branch")),
         "city": _value(fields.get("city")),
         "latitude": _value(fields.get("latitude")),

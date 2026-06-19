@@ -11,7 +11,7 @@ from app.domain.validation import normalize_text_dash, parse_int_lenient
 
 STORE_FORM_FIELDS = (
     "brand",
-    "department_store",
+    "outlet",
     "branch",
     "city",
     "latitude",
@@ -26,7 +26,7 @@ _RANDOM = random.SystemRandom()
 
 def validate_store_field(field: str, raw: object | None) -> FieldResult:
     value = "" if raw is None else str(raw).strip()
-    if field in {"brand", "department_store", "branch", "city"}:
+    if field in {"brand", "outlet", "branch", "city"}:
         if not value or value == "-":
             return FieldResult(False, None, f"STORE_ERROR_{_field_error_suffix(field)}_REQUIRED")
         return FieldResult(True, normalize_text_dash(value), None)
@@ -56,13 +56,13 @@ def validate_store_field(field: str, raw: object | None) -> FieldResult:
 
 def store_identity(
     brand: str,
-    department_store: str,
+    outlet: str,
     branch: str,
     city: str,
 ) -> tuple[str, str, str, str]:
     return (
         _normalize_identity_part(brand),
-        _normalize_identity_part(department_store),
+        _normalize_identity_part(outlet),
         _normalize_identity_part(branch),
         _normalize_identity_part(city),
     )
@@ -71,15 +71,15 @@ def store_identity(
 def is_duplicate_identity(
     active_stores: Iterable[StoreLocation],
     brand: str,
-    department_store: str,
+    outlet: str,
     branch: str,
     city: str,
     exclude_store_id: str | None,
 ) -> bool:
-    candidate = store_identity(brand, department_store, branch, city)
+    candidate = store_identity(brand, outlet, branch, city)
     return any(
         store.store_id != exclude_store_id
-        and store_identity(store.brand, store.department_store, store.branch, store.city) == candidate
+        and store_identity(store.brand, store.outlet, store.branch, store.city) == candidate
         for store in active_stores
     )
 
@@ -104,6 +104,4 @@ def _normalize_identity_part(value: str) -> str:
 
 
 def _field_error_suffix(field: str) -> str:
-    if field == "department_store":
-        return "DEPARTMENT"
     return field.upper()

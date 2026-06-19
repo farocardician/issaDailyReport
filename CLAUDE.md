@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Dockerized Python 3.12 Telegram bot for daily per-store SPG (Sales Promotion) reports. An SPG activates Telegram access by sharing their registered phone contact, shares their location, confirms the store, answers a guided sequence of sales questions, reviews a summary, and submits. Submitting notifies an admin chat. Stack: `python-telegram-bot` (async, v21), PostgreSQL 16 via `asyncpg`, DB-backed Bahasa Indonesia UI text, and a Cloudflare named tunnel for webhook delivery.
 
+## UI/UX guideline contract
+
+Before adding or changing any Telegram bot flow, message, keyboard, validation, navigation, or session behavior, read and follow `TelegramBotUIUXGuideline.md`.
+
+The guideline is the product UX contract for this bot. Implementation must preserve its patterns unless the task explicitly says otherwise.
+
+Do not invent a different UX pattern when an existing guideline pattern applies. If a change requires deviating from the guideline, document the reason in the implementation summary.
+
 ## Commands (Docker-first)
 
 Everything runs inside Docker Compose — there is no local virtualenv workflow. The `bot` image sets `PYTHONPATH=/app/src`, so imports are `app.*`.
@@ -82,3 +90,4 @@ Tables: `stores`, `users` (registered phone and Telegram activation links), `dai
 - Add/adjust user-facing copy via `ui_translate` + `Reference/ui_translate.csv`, preserving the Bahasa Indonesia flow.
 - `Reference/*.csv` are seed inputs the app never writes back to. `Reference/user_master.csv` contains personal contact data and is intentionally excluded from the repomix bundle — never add it to `repomix.config.json` includes.
 - Never commit `.env`, Telegram tokens, the Cloudflare tunnel token, personal contact changes, or database dumps.
+- Before changing Telegram flow, messages, buttons, keyboards, validation, session behavior, or user-facing copy, check `TelegramBotUIUXGuideline.md` and keep the implementation aligned with it.

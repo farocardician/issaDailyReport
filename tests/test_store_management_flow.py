@@ -10,6 +10,8 @@ import pytest
 from telegram.constants import ChatType
 
 from app.bot.flow import ReportFlow
+from app.domain.brands import Brand
+from app.domain.outlet import Outlet
 from app.domain.session_state import Step
 from app.domain.store_matching import StoreLocation
 from app.templates import MessageTemplates
@@ -34,7 +36,9 @@ def test_add_store_happy_path_creates_active_store_only_after_save() -> None:
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
     assert stores.created == []
 
-    for text in ["VIZU", "Mall Besar", "Utama", "Jakarta", "-6,2", "106.8", "100", "Lewati"]:
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    for text in ["Utama", "Jakarta", "-6,2", "106.8", "100", "Lewati"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
 
     assert sessions.session["current_step"] == Step.STORE_FORM_REVIEW.value
@@ -45,7 +49,7 @@ def test_add_store_happy_path_creates_active_store_only_after_save() -> None:
     created = stores.created[0]
     assert created.status == "Aktif"
     assert created.brand == "VIZU"
-    assert created.department_store == "Mall Besar"
+    assert created.outlet == "Sogo"
     assert created.branch == "Utama"
     assert created.city == "Jakarta"
     assert created.latitude == -6.2
@@ -54,6 +58,35 @@ def test_add_store_happy_path_creates_active_store_only_after_save() -> None:
     assert created.notes is None
     assert sessions.session["current_step"] == Step.MANAGE_STORES_MENU.value
     assert "STORE_ADDED" in _last_message(chat)["text"]
+
+
+def test_store_form_outlet_picker_advances_and_uses_selected_label() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _stores = _flow(_FakeStores([]), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+
+    assert _callback_data(_last_message(chat)) == [
+        "stores:setoutlet:SOG",
+        "stores:setoutlet:CRL",
+        "stores:form:previous",
+        "stores:form:cancel",
+    ]
+
+    asyncio.run(flow.handle_message(_text_update(chat, "Central"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["pos"] == 1
+    assert "outlet" not in form["fields"]
+    assert "ASK_STORE_OUTLET" in _last_message(chat)["text"]
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:CRL"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["fields"]["outlet"] == "Central"
+    assert form["pos"] == 2
+    assert "ASK_STORE_BRANCH" in _last_message(chat)["text"]
 
 
 def test_list_and_detail_render_store_data() -> None:
@@ -76,6 +109,38 @@ def test_list_and_detail_render_store_data() -> None:
         "stores:edit:STR-1",
         "stores:deactivate:STR-1",
         "stores:back:list",
+    ]
+
+
+def test_store_list_paginates_and_rerenders_page_callback() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    stores = [_store(f"STR-{index}", branch=f"Branch {index}") for index in range(8)]
+    flow, chat, sessions, _stores = _flow(_FakeStores(stores), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:list"), SimpleNamespace()))
+
+    assert sessions.session["draft_report"]["list_page"] == 0
+    assert _callback_data(_last_message(chat)) == [
+        "stores:view:STR-0",
+        "stores:view:STR-1",
+        "stores:view:STR-2",
+        "stores:view:STR-3",
+        "stores:view:STR-4",
+        "stores:view:STR-5",
+        "stores:noop",
+        "stores:page:1",
+        "stores:back:menu",
+    ]
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:page:1"), SimpleNamespace()))
+
+    assert sessions.session["draft_report"]["list_page"] == 1
+    assert _callback_data(_last_message(chat)) == [
+        "stores:view:STR-6",
+        "stores:view:STR-7",
+        "stores:page:0",
+        "stores:noop",
+        "stores:back:menu",
     ]
 
 
@@ -132,7 +197,9 @@ def test_duplicate_identity_rejected_on_add_save() -> None:
     flow, chat, sessions, stores = _flow(stores, _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
 
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
-    for text in [" vIzu ", "Mall Besar", "Utama", "Jakarta", "-6.2", "106.8", "100", "Lewati"]:
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    for text in ["Utama", "Jakarta", "-6.2", "106.8", "100", "Lewati"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
     asyncio.run(flow.handle_message(_text_update(chat, "Simpan"), SimpleNamespace()))
 
@@ -202,7 +269,9 @@ def test_coordinate_and_radius_validation_errors_reprompt() -> None:
     flow, chat, sessions, _stores = _flow(_FakeStores([]), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
 
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
-    for text in ["VIZU", "Mall Besar", "Utama", "Jakarta"]:
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    for text in ["Utama", "Jakarta"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
 
     asyncio.run(flow.handle_message(_text_update(chat, "91"), SimpleNamespace()))
@@ -276,6 +345,13 @@ def _flow(
             templates=MessageTemplates(templates),
             templates_repository=_FakeTemplatesRepository(templates),
             stores=stores,
+            brands=_FakeBrands([Brand("VZ", "VIZU", "VZ", 1, "Aktif")]),
+            outlets=_FakeOutlets(
+                [
+                    Outlet("SOG", "Sogo", "SOG", 1, "Aktif"),
+                    Outlet("CRL", "Central", "CRL", 2, "Aktif"),
+                ]
+            ),
             sales_sources=SimpleNamespace(),
             stock_issues=SimpleNamespace(),
             users=users,
@@ -302,11 +378,11 @@ def _templates() -> dict[str, str]:
         "STORE_LIST_EMPTY": "{{notice}}STORE_LIST_EMPTY",
         "STORE_LIST_BUTTON": "{{store_label}} - {{status}}",
         "STORE_DETAIL": (
-            "{{notice}}STORE_DETAIL {{store_id}} {{brand}} {{department_store}} {{branch}} {{city}} "
+            "{{notice}}STORE_DETAIL {{store_id}} {{brand}} {{outlet}} {{branch}} {{city}} "
             "{{latitude}} {{longitude}} {{allowed_radius}} {{notes}} {{status}}"
         ),
         "STORE_FORM_REVIEW": (
-            "{{notice}}STORE_FORM_REVIEW {{brand}} {{department_store}} {{branch}} {{city}} "
+            "{{notice}}STORE_FORM_REVIEW {{brand}} {{outlet}} {{branch}} {{city}} "
             "{{latitude}} {{longitude}} {{allowed_radius}} {{notes}}"
         ),
         "STORE_EDIT_MENU": "STORE_EDIT_MENU",
@@ -317,7 +393,7 @@ def _templates() -> dict[str, str]:
         "STORE_DEACTIVATED": "STORE_DEACTIVATED\n",
         "STORE_REACTIVATED": "STORE_REACTIVATED\n",
         "STORE_ERROR_BRAND_REQUIRED": "STORE_ERROR_BRAND_REQUIRED\n",
-        "STORE_ERROR_DEPARTMENT_REQUIRED": "STORE_ERROR_DEPARTMENT_REQUIRED\n",
+        "STORE_ERROR_OUTLET_REQUIRED": "STORE_ERROR_OUTLET_REQUIRED\n",
         "STORE_ERROR_BRANCH_REQUIRED": "STORE_ERROR_BRANCH_REQUIRED\n",
         "STORE_ERROR_CITY_REQUIRED": "STORE_ERROR_CITY_REQUIRED\n",
         "STORE_ERROR_LATITUDE_INVALID": "STORE_ERROR_LATITUDE_INVALID\n",
@@ -325,7 +401,7 @@ def _templates() -> dict[str, str]:
         "STORE_ERROR_RADIUS_INVALID": "STORE_ERROR_RADIUS_INVALID\n",
         "STORE_ERROR_DUPLICATE_IDENTITY": "STORE_ERROR_DUPLICATE_IDENTITY\n",
         "ASK_STORE_BRAND": "{{error}}ASK_STORE_BRAND",
-        "ASK_STORE_DEPARTMENT": "{{error}}ASK_STORE_DEPARTMENT",
+        "ASK_STORE_OUTLET": "{{error}}ASK_STORE_OUTLET",
         "ASK_STORE_BRANCH": "{{error}}ASK_STORE_BRANCH",
         "ASK_STORE_CITY": "{{error}}ASK_STORE_CITY",
         "ASK_STORE_LATITUDE": "{{error}}ASK_STORE_LATITUDE",
@@ -345,7 +421,7 @@ def _templates() -> dict[str, str]:
         "BUTTON_STORE_DEACTIVATE": "Nonaktifkan",
         "BUTTON_STORE_REACTIVATE": "Aktifkan Kembali",
         "BUTTON_STORE_FIELD_BRAND": "Brand",
-        "BUTTON_STORE_FIELD_DEPARTMENT": "Department",
+        "BUTTON_STORE_FIELD_OUTLET": "Outlet",
         "BUTTON_STORE_FIELD_BRANCH": "Branch",
         "BUTTON_STORE_FIELD_CITY": "City",
         "BUTTON_STORE_FIELD_LATITUDE": "Latitude",
@@ -353,16 +429,22 @@ def _templates() -> dict[str, str]:
         "BUTTON_STORE_FIELD_RADIUS": "Radius",
         "BUTTON_STORE_FIELD_NOTES": "Catatan",
         "BUTTON_BACK": "Kembali",
+        "BUTTON_BACK_TO_BRANDS": "‹ Pilih Brand",
+        "BUTTON_PAGE_PREV": "‹ Sebelumnya",
+        "BUTTON_PAGE_NEXT": "Berikutnya ›",
         "BUTTON_SAVE": "Simpan",
         "BUTTON_EDIT": "Ubah",
         "BUTTON_CONFIRM_YES": "Ya",
         "BUTTON_CANCEL": "Batal",
         "BUTTON_PREVIOUS": "Sebelumnya",
         "BUTTON_SKIP": "Lewati",
+        "BRAND_LIST_BUTTON": "{{short_code}} · {{label}}",
+        "OUTLET_LIST_BUTTON": "{{short_code}} · {{label}}",
         "PROGRESS_MAIN_LABEL": "Langkah",
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "PROGRESS_PHASE_STORE": "Pilih Toko",
-        "STORE_LABEL_FORMAT": "{{brand}} - {{department_store}} {{branch}}, {{city}}",
+        "PAGE_INDICATOR": "Hal. {{current}}/{{total}}",
+        "STORE_LABEL_FORMAT": "{{brand}} - {{outlet}} {{branch}}, {{city}}",
         "STORE_BUTTON_LABEL_WITH_DISTANCE": "{{store_label}} ({{distance_meter}})",
         "DISTANCE_METER_FORMAT": "{{distance}} m",
         "DISTANCE_EMPTY": "-",
@@ -379,7 +461,7 @@ def _store(
 ) -> StoreLocation:
     return StoreLocation(
         store_id=store_id,
-        department_store="Mall Besar",
+        outlet="Sogo",
         branch=branch,
         city="Jakarta",
         brand="VIZU",
@@ -479,7 +561,7 @@ class _FakeStores:
         self,
         store_id: str,
         brand: str,
-        department_store: str,
+        outlet: str,
         branch: str,
         city: str,
         latitude: float,
@@ -491,7 +573,7 @@ class _FakeStores:
         store = StoreLocation(
             store_id=store_id,
             brand=brand,
-            department_store=department_store,
+            outlet=outlet,
             branch=branch,
             city=city,
             latitude=latitude,
@@ -507,7 +589,7 @@ class _FakeStores:
         self,
         store_id: str,
         brand: str,
-        department_store: str,
+        outlet: str,
         branch: str,
         city: str,
         latitude: float,
@@ -519,7 +601,7 @@ class _FakeStores:
         self.stores[store_id] = replace(
             self.stores[store_id],
             brand=brand,
-            department_store=department_store,
+            outlet=outlet,
             branch=branch,
             city=city,
             latitude=latitude,
@@ -531,6 +613,22 @@ class _FakeStores:
     async def set_status(self, store_id: str, status: str) -> None:
         self.status_changes.append((store_id, status))
         self.stores[store_id] = replace(self.stores[store_id], status=status)
+
+
+class _FakeBrands:
+    def __init__(self, brands: list[Brand]) -> None:
+        self.brands = brands
+
+    async def list_active(self, active_status: str) -> list[Brand]:
+        return [brand for brand in self.brands if brand.status == active_status]
+
+
+class _FakeOutlets:
+    def __init__(self, outlets: list[Outlet]) -> None:
+        self.outlets = outlets
+
+    async def list_active(self, active_status: str) -> list[Outlet]:
+        return [outlet for outlet in self.outlets if outlet.status == active_status]
 
 
 class _FakeUsers:

@@ -1,0 +1,7 @@
+Outlet_ID,Label,Short_Code,Sort_Order,Status
+SOG,Sogo,SOG,1,Aktif
+CRL,Central,CRL,2,Aktif
+MET,Metro,MET,3,Aktif
+SEI,Seibu,SEI,4,Aktif
+PRT,Partner,PRT,5,Aktif
+RSL,Reseller,RSL,6,Aktif

@@ -257,6 +257,8 @@ def _report_flow(users: "_FakeUsers", chat: "_FakeChat", sessions: "_FakeSession
         templates=MessageTemplates(templates),
         templates_repository=_FakeTemplatesRepository(templates),
         stores=SimpleNamespace(),
+        brands=SimpleNamespace(),
+        outlets=SimpleNamespace(),
         sales_sources=SimpleNamespace(),
         stock_issues=SimpleNamespace(),
         users=users,

@@ -10,11 +10,11 @@ class StoresRepository:
     async def list_active(self, active_status: str) -> list[StoreLocation]:
         rows = await self._pool.fetch(
             """
-            SELECT store_id, department_store, branch, city, brand, latitude, longitude,
+            SELECT store_id, outlet, branch, city, brand, latitude, longitude,
                    allowed_radius_meter, status, notes
             FROM stores
             WHERE status = $1
-            ORDER BY brand, department_store, branch, city
+            ORDER BY brand, outlet, branch, city
             """,
             active_status,
         )
@@ -23,10 +23,10 @@ class StoresRepository:
     async def list_all(self) -> list[StoreLocation]:
         rows = await self._pool.fetch(
             """
-            SELECT store_id, department_store, branch, city, brand, latitude, longitude,
+            SELECT store_id, outlet, branch, city, brand, latitude, longitude,
                    allowed_radius_meter, status, notes
             FROM stores
-            ORDER BY brand, branch, city
+            ORDER BY brand, outlet, branch, city
             """,
         )
         return [_to_store(row) for row in rows]
@@ -34,7 +34,7 @@ class StoresRepository:
     async def get_by_id(self, store_id: str) -> StoreLocation | None:
         row = await self._pool.fetchrow(
             """
-            SELECT store_id, department_store, branch, city, brand, latitude, longitude,
+            SELECT store_id, outlet, branch, city, brand, latitude, longitude,
                    allowed_radius_meter, status, notes
             FROM stores
             WHERE store_id = $1
@@ -47,7 +47,7 @@ class StoresRepository:
         self,
         store_id: str,
         brand: str,
-        department_store: str,
+        outlet: str,
         branch: str,
         city: str,
         latitude: float,
@@ -59,14 +59,14 @@ class StoresRepository:
         await self._pool.execute(
             """
             INSERT INTO stores (
-                store_id, brand, department_store, branch, city, latitude, longitude,
+                store_id, brand, outlet, branch, city, latitude, longitude,
                 allowed_radius_meter, notes, status
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             """,
             store_id,
             brand,
-            department_store,
+            outlet,
             branch,
             city,
             latitude,
@@ -80,7 +80,7 @@ class StoresRepository:
         self,
         store_id: str,
         brand: str,
-        department_store: str,
+        outlet: str,
         branch: str,
         city: str,
         latitude: float,
@@ -92,7 +92,7 @@ class StoresRepository:
             """
             UPDATE stores
             SET brand = $2,
-                department_store = $3,
+                outlet = $3,
                 branch = $4,
                 city = $5,
                 latitude = $6,
@@ -103,7 +103,7 @@ class StoresRepository:
             """,
             store_id,
             brand,
-            department_store,
+            outlet,
             branch,
             city,
             latitude,
@@ -127,7 +127,7 @@ class StoresRepository:
 def _to_store(row: asyncpg.Record) -> StoreLocation:
     return StoreLocation(
         store_id=row["store_id"],
-        department_store=row["department_store"],
+        outlet=row["outlet"],
         branch=row["branch"],
         city=row["city"],
         brand=row["brand"],

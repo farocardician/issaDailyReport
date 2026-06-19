@@ -12,11 +12,11 @@ from app.domain.store_matching import StoreLocation
 
 
 @pytest.mark.parametrize(
-    ("field", "error_key"),
-    [
-        ("brand", "STORE_ERROR_BRAND_REQUIRED"),
-        ("department_store", "STORE_ERROR_DEPARTMENT_REQUIRED"),
-        ("branch", "STORE_ERROR_BRANCH_REQUIRED"),
+        ("field", "error_key"),
+        [
+            ("brand", "STORE_ERROR_BRAND_REQUIRED"),
+            ("outlet", "STORE_ERROR_OUTLET_REQUIRED"),
+            ("branch", "STORE_ERROR_BRANCH_REQUIRED"),
         ("city", "STORE_ERROR_CITY_REQUIRED"),
     ],
 )
@@ -97,14 +97,14 @@ def test_generate_store_id_format() -> None:
 def _store(
     store_id: str,
     brand: str,
-    department_store: str,
+    outlet: str,
     branch: str,
     city: str,
 ) -> StoreLocation:
     return StoreLocation(
         store_id=store_id,
         brand=brand,
-        department_store=department_store,
+        outlet=outlet,
         branch=branch,
         city=city,
         latitude=-6.2,

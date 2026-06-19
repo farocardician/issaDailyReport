@@ -10,7 +10,7 @@ def store(
 ) -> StoreLocation:
     return StoreLocation(
         store_id=store_id,
-        department_store="Sogo",
+        outlet="Sogo",
         branch=store_id,
         city="Jakarta",
         brand="VIVI ZUBEDI",

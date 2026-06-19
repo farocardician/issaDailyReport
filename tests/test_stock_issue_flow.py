@@ -301,6 +301,8 @@ def _flow(
         templates=MessageTemplates(templates),
         templates_repository=_FakeTemplatesRepository(templates),
         stores=SimpleNamespace(),
+        brands=SimpleNamespace(),
+        outlets=SimpleNamespace(),
         sales_sources=SimpleNamespace(),
         stock_issues=_FakeStockIssues(issues),
         users=SimpleNamespace(),

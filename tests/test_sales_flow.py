@@ -236,6 +236,8 @@ def _flow(
         templates=MessageTemplates(templates),
         templates_repository=_FakeTemplatesRepository(templates),
         stores=_FakeStores([_store()]),
+        brands=SimpleNamespace(),
+        outlets=SimpleNamespace(),
         sales_sources=_FakeSalesSources(sources or [_source("outlet", "Outlet", True, 1), _source("shopee", "Shopee", sort_order=3), _source("tokopedia", "Tokopedia", sort_order=4)]),
         stock_issues=_FakeStockIssues([_stock_issue("size_empty", "Size Habis")]),
         users=SimpleNamespace(),
@@ -294,7 +296,7 @@ def _templates() -> dict[str, str]:
         "PROGRESS_PHASE_NOTE": "Catatan",
         "PROGRESS_PHASE_REVIEW_SUBMIT": "Review & Submit",
         "SALES_SOURCE_STEP_LABEL": "Sumber",
-        "STORE_LABEL_FORMAT": "{{brand}} - {{department_store}} {{branch}}, {{city}}",
+        "STORE_LABEL_FORMAT": "{{brand}} - {{outlet}} {{branch}}, {{city}}",
         "DISTANCE_METER_FORMAT": "{{distance}} m",
         "DISTANCE_EMPTY": "-",
         "LOCATION_STATUS_IN_RADIUS": "Dalam radius",
@@ -337,7 +339,7 @@ def _stock_issue(
 def _store() -> StoreLocation:
     return StoreLocation(
         store_id="S001",
-        department_store="Mall",
+        outlet="Mall",
         branch="Utama",
         city="Jakarta",
         brand="VIZU",

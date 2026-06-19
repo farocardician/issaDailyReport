@@ -5,9 +5,9 @@ from app.templates import MessageTemplates
 def _templates() -> MessageTemplates:
     return MessageTemplates(
         {
-            "STORE_LABEL_FORMAT": "{{brand}} – {{department_store}} {{branch}}, {{city}}",
+            "STORE_LABEL_FORMAT": "{{brand}} – {{outlet}} {{branch}}, {{city}}",
             "STORE_BUTTON_LABEL_WITH_DISTANCE": "{{store_label}} ({{distance_meter}})",
-            "AREA_LABEL_FORMAT": "{{department_store}} {{branch}}, {{city}}",
+            "AREA_LABEL_FORMAT": "{{outlet}} {{branch}}, {{city}}",
             "DISTANCE_METER_FORMAT": "{{distance}} m",
             "DISTANCE_EMPTY": "-",
             "LOCATION_STATUS_IN_RADIUS": "Dalam radius",
@@ -21,7 +21,7 @@ def _templates() -> MessageTemplates:
 def _store() -> StoreLocation:
     return StoreLocation(
         store_id="S001",
-        department_store="Mall & Co",
+        outlet="Mall & Co",
         branch="Utama",
         city="Jakarta",
         brand="VIZU",

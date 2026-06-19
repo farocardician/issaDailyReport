@@ -127,6 +127,41 @@ def test_list_and_detail_render_user_data() -> None:
     ]
 
 
+def test_user_list_paginates_and_rerenders_page_callback() -> None:
+    actor = _user("ACTOR", "Admin", "081200000001", role="ADMIN", telegram_user_id=7)
+    users = [
+        _user(f"USR-{index}", f"User {index}", f"0812000000{index:02d}", role="USER")
+        for index in range(8)
+    ]
+    flow, chat, sessions, _users = _flow(_FakeUsers([actor, *users]), Step.MANAGE_USERS_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "users:list"), SimpleNamespace()))
+
+    assert sessions.session["draft_report"]["list_page"] == 0
+    assert _callback_data(_last_message(chat)) == [
+        "users:view:USR-0",
+        "users:view:USR-1",
+        "users:view:USR-2",
+        "users:view:USR-3",
+        "users:view:USR-4",
+        "users:view:USR-5",
+        "users:noop",
+        "users:page:1",
+        "users:back:menu",
+    ]
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "users:page:1"), SimpleNamespace()))
+
+    assert sessions.session["draft_report"]["list_page"] == 1
+    assert _callback_data(_last_message(chat)) == [
+        "users:view:USR-6",
+        "users:view:USR-7",
+        "users:page:0",
+        "users:noop",
+        "users:back:menu",
+    ]
+
+
 def test_edit_user_updates_basic_fields_without_touching_role_status_or_telegram() -> None:
     actor = _user("ACTOR", "Admin", "081200000001", role="ADMIN", telegram_user_id=7)
     target = _user("USR-1", "Budi", "081280003276", role="USER", telegram_user_id=9, status="Aktif")
@@ -274,6 +309,8 @@ def _report_flow(users: "_FakeUsers", chat: "_FakeChat", sessions: "_FakeSession
         templates=MessageTemplates(templates),
         templates_repository=_FakeTemplatesRepository(templates),
         stores=SimpleNamespace(),
+        brands=SimpleNamespace(),
+        outlets=SimpleNamespace(),
         sales_sources=SimpleNamespace(),
         stock_issues=SimpleNamespace(),
         users=users,
@@ -335,6 +372,8 @@ def _templates() -> dict[str, str]:
         "BUTTON_USER_DEACTIVATE": "Nonaktifkan",
         "BUTTON_USER_REACTIVATE": "Aktifkan Kembali",
         "BUTTON_USER_RESET_LINK": "Reset Link Telegram",
+        "BUTTON_PAGE_PREV": "‹ Sebelumnya",
+        "BUTTON_PAGE_NEXT": "Berikutnya ›",
         "BUTTON_USER_FIELD_NAME": "Nama",
         "BUTTON_USER_FIELD_PHONE": "Nomor HP",
         "BUTTON_USER_FIELD_EMAIL": "Email",
@@ -348,6 +387,7 @@ def _templates() -> dict[str, str]:
         "PROGRESS_MAIN_LABEL": "Langkah",
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "PROGRESS_PHASE_STORE": "Pilih Toko",
+        "PAGE_INDICATOR": "Hal. {{current}}/{{total}}",
     }
 
 

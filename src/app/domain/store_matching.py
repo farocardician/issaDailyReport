@@ -17,7 +17,7 @@ class MatchType(StrEnum):
 @dataclass(frozen=True)
 class StoreLocation:
     store_id: str
-    department_store: str
+    outlet: str
     branch: str
     city: str
     brand: str

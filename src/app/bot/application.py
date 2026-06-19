@@ -6,6 +6,8 @@ from app.bot.flow import ReportFlow
 from app.bot.handlers import register_handlers
 from app.config import Settings
 from app.db import bootstrap_schema, create_pool
+from app.repositories.brands import BrandsRepository
+from app.repositories.outlet import OutletRepository
 from app.repositories.reports import ReportsRepository
 from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
@@ -29,6 +31,8 @@ def build_application(settings: Settings) -> Application:
             templates=templates,
             templates_repository=templates_repository,
             stores=StoresRepository(pool),
+            brands=BrandsRepository(pool),
+            outlets=OutletRepository(pool),
             sales_sources=SalesSourcesRepository(pool),
             stock_issues=StockIssuesRepository(pool),
             users=UsersRepository(pool),

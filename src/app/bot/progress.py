@@ -17,6 +17,7 @@ PROGRESS_BY_STEP: dict[Step, ProgressSpec] = {
     Step.AWAITING_LOCATION: ProgressSpec(1, 5, "PROGRESS_PHASE_STORE"),
     Step.CONFIRM_STORE: ProgressSpec(1, 5, "PROGRESS_PHASE_STORE"),
     Step.CHOOSE_STORE: ProgressSpec(1, 5, "PROGRESS_PHASE_STORE"),
+    Step.CHOOSE_BRAND: ProgressSpec(1, 5, "PROGRESS_PHASE_STORE"),
     Step.MANUAL_STORE_SELECTION: ProgressSpec(1, 5, "PROGRESS_PHASE_STORE"),
     Step.ASK_SALES_SOURCES: ProgressSpec(2, 5, "PROGRESS_PHASE_SALES"),
     Step.ASK_SALES_INPUT: ProgressSpec(2, 5, "PROGRESS_PHASE_SALES"),

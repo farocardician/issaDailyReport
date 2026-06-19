@@ -7,6 +7,8 @@ from app.bot.keyboards import (
     management_edit_menu_keyboard,
     management_list_keyboard,
     management_menu_keyboard,
+    option_picker_keyboard,
+    pagination_nav_row,
     retry_location_keyboard,
     sales_edit_menu_keyboard,
     sales_input_navigation_keyboard,
@@ -222,6 +224,109 @@ def test_store_candidate_list_keyboard_keeps_report_callbacks() -> None:
     ]
 
 
+def test_store_candidate_list_keyboard_does_not_paginate_by_default() -> None:
+    candidates = [
+        StoreCandidate(_store(f"STR-{index}"), float(index), 100, True)
+        for index in range(8)
+    ]
+    labels = {candidate.store.store_id: candidate.store.store_id for candidate in candidates}
+    keyboard = store_candidate_list_keyboard(candidates, labels).to_dict()
+
+    buttons = [button for row in keyboard["inline_keyboard"] for button in row]
+    callback_data = [button["callback_data"] for button in buttons]
+
+    assert callback_data == [f"store:STR-{index}" for index in range(8)]
+    assert all(not callback.startswith("store_page:") for callback in callback_data)
+    assert all(button["text"] for button in buttons)
+
+
+def test_option_picker_keyboard_uses_supplied_callbacks() -> None:
+    keyboard = option_picker_keyboard(
+        ["VZ", "MYC"],
+        {"VZ": "VZ · VIVI ZUBEDI", "MYC": "MYC · Mayyech"},
+        callback_data=["brand:0", "brand:1"],
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "brand:0", "text": "VZ · VIVI ZUBEDI"}],
+        [{"callback_data": "brand:1", "text": "MYC · Mayyech"}],
+    ]
+
+
+def test_option_picker_keyboard_supports_outlet_ids() -> None:
+    keyboard = option_picker_keyboard(
+        ["SOG", "CRL"],
+        {"SOG": "SOG · Sogo", "CRL": "CRL · Central"},
+        callback_data=["stores:setoutlet:SOG", "stores:setoutlet:CRL"],
+        previous_label="Sebelumnya",
+        previous_callback_data="stores:form:previous",
+        cancel_label="Batal",
+        cancel_callback_data="stores:form:cancel",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "stores:setoutlet:SOG", "text": "SOG · Sogo"}],
+        [{"callback_data": "stores:setoutlet:CRL", "text": "CRL · Central"}],
+        [
+            {"callback_data": "stores:form:previous", "text": "Sebelumnya"},
+            {"callback_data": "stores:form:cancel", "text": "Batal"},
+        ],
+    ]
+
+
+def test_pagination_nav_row_hides_prev_on_first_and_next_on_last() -> None:
+    first = pagination_nav_row(
+        0,
+        3,
+        lambda page: f"users:page:{page}",
+        "‹ Sebelumnya",
+        "Berikutnya ›",
+        "Hal. {{current}}/{{total}}",
+    )
+    last = pagination_nav_row(
+        2,
+        3,
+        lambda page: f"users:page:{page}",
+        "‹ Sebelumnya",
+        "Berikutnya ›",
+        "Hal. {{current}}/{{total}}",
+    )
+
+    assert [button.to_dict() for button in first] == [
+        {"callback_data": "users:noop", "text": "Hal. 1/3"},
+        {"callback_data": "users:page:1", "text": "Berikutnya ›"},
+    ]
+    assert [button.to_dict() for button in last] == [
+        {"callback_data": "users:page:1", "text": "‹ Sebelumnya"},
+        {"callback_data": "users:noop", "text": "Hal. 3/3"},
+    ]
+
+
+def test_management_list_keyboard_pages_at_six() -> None:
+    users = [{"user_id": f"USR-{index}"} for index in range(8)]
+    labels = {str(user["user_id"]): str(user["user_id"]) for user in users}
+    keyboard = management_list_keyboard(
+        "users",
+        users,
+        labels,
+        "Kembali",
+        page=1,
+        prev_label="‹ Sebelumnya",
+        next_label="Berikutnya ›",
+        indicator_label="Hal. {{current}}/{{total}}",
+    ).to_dict()
+
+    assert keyboard["inline_keyboard"] == [
+        [{"callback_data": "users:view:USR-6", "text": "USR-6"}],
+        [{"callback_data": "users:view:USR-7", "text": "USR-7"}],
+        [
+            {"callback_data": "users:page:0", "text": "‹ Sebelumnya"},
+            {"callback_data": "users:noop", "text": "Hal. 2/2"},
+        ],
+        [{"callback_data": "users:back:menu", "text": "Kembali"}],
+    ]
+
+
 def test_management_edit_menu_keyboard_admin_prefix() -> None:
     keyboard = management_edit_menu_keyboard(
         "admins",
@@ -383,7 +488,7 @@ def test_sales_edit_menu_keyboard() -> None:
 def _store(store_id: str) -> StoreLocation:
     return StoreLocation(
         store_id=store_id,
-        department_store="Mall",
+        outlet="Mall",
         branch="Utama",
         city="Jakarta",
         brand="VIZU",

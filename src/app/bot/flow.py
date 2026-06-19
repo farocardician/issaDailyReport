@@ -9,6 +9,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from app.bot.keyboards import (
+    PAGE_SIZE,
     activation_contact_keyboard,
     admin_menu_keyboard,
     confirm_keyboard,
@@ -20,6 +21,7 @@ from app.bot.keyboards import (
     management_menu_keyboard,
     manual_store_list_keyboard,
     none_reply_keyboard,
+    option_picker_keyboard,
     retry_location_keyboard,
     sales_edit_menu_keyboard,
     sales_input_navigation_keyboard,
@@ -81,7 +83,10 @@ from app.domain.activation import (
     decide_activation,
     match_active_users_by_phone,
 )
+from app.domain.brands import Brand, BrandOption, brand_options, filter_by_brand
 from app.domain.geo import haversine_meters
+from app.domain.outlet import Outlet
+from app.domain.pagination import paginate
 from app.domain.report import build_summary, generate_report_id, location_status
 from app.domain.roles import (
     Role,
@@ -110,6 +115,8 @@ from app.domain.user_management import (
     validate_field,
 )
 from app.domain.validation import normalize_text_dash, parse_int_lenient
+from app.repositories.brands import BrandsRepository
+from app.repositories.outlet import OutletRepository
 from app.repositories.reports import ReportsRepository
 from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
@@ -156,6 +163,8 @@ class ReportFlow:
         templates: MessageTemplates,
         templates_repository: TemplatesRepository,
         stores: StoresRepository,
+        brands: BrandsRepository,
+        outlets: OutletRepository,
         sales_sources: SalesSourcesRepository,
         stock_issues: StockIssuesRepository,
         users: UsersRepository,
@@ -166,6 +175,8 @@ class ReportFlow:
         self._templates = templates
         self._templates_repository = templates_repository
         self._stores = stores
+        self._brands = brands
+        self._outlets = outlets
         self._sales_sources = sales_sources
         self._stock_issues = stock_issues
         self._users = users
@@ -210,6 +221,8 @@ class ReportFlow:
             await self._handle_phone_contact(update, session)
         elif step == Step.AWAITING_LOCATION:
             await self._handle_location(update, session)
+        elif step == Step.CHOOSE_BRAND:
+            await self._show_brand_picker_for_session(update, session)
         elif step == Step.MANUAL_STORE_SELECTION and _message_has_location(update):
             await self._handle_location(update, session, allow_manual_store_selection=False)
         elif step == Step.ASK_SALES_SOURCES:
@@ -254,6 +267,8 @@ class ReportFlow:
 
         data = update.callback_query.data if update.callback_query else ""
         step = Step(session["current_step"])
+        if data.endswith(":noop"):
+            return
 
         if step == Step.CONFIRM_STORE and data == "confirm_store:yes":
             draft = dict(session["draft_report"])
@@ -263,6 +278,25 @@ class ReportFlow:
             await self._show_manual_store_selection(update, session)
         elif step == Step.CHOOSE_STORE and data == "manual:stores":
             await self._show_manual_store_selection(update, session)
+        elif step == Step.CHOOSE_BRAND and data.startswith("brand:"):
+            page = 0
+            brand_index = _callback_int(data, "brand:")
+            if brand_index is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            await self._show_brand_filtered_stores(update, session, brand_index, page)
+        elif step == Step.MANUAL_STORE_SELECTION and data == "manual:brands":
+            await self._show_brand_picker_for_session(update, session)
+        elif step == Step.MANUAL_STORE_SELECTION and data.startswith("store_page:"):
+            page = _callback_int(data, "store_page:")
+            if page is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            brand_index = _int_or_none(dict(session["draft_report"]).get("selected_brand_index"))
+            if brand_index is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            await self._show_brand_filtered_stores(update, session, brand_index, page)
         elif step in {Step.CHOOSE_STORE, Step.MANUAL_STORE_SELECTION} and data.startswith("store:"):
             await self._select_store(update, session, data.removeprefix("store:"))
         elif step == Step.ASK_SALES_SOURCES and data.startswith("sales_source:"):
@@ -289,6 +323,8 @@ class ReportFlow:
             await self._handle_management_callback(update, session, data)
         elif step in STORE_CALLBACK_STEPS and data.startswith("stores:"):
             await self._handle_store_callback(update, session, data)
+        elif step == Step.STORE_FORM_INPUT and data.startswith("stores:"):
+            await self._handle_store_form_callback(update, session, data)
         else:
             await self._send(update, "UNKNOWN_COMMAND")
 
@@ -425,17 +461,7 @@ class ReportFlow:
             )
             return
 
-        await self._persist(update, Step.MANUAL_STORE_SELECTION, draft, user_id=session["user_id"])
-        reply_markup = manual_store_list_keyboard(
-            [candidate.store for candidate in match.candidates],
-            await self._store_labels([candidate.store for candidate in match.candidates]),
-        )
-        await self._send(
-            update,
-            "LOCATION_NOT_FOUND",
-            reply_markup=reply_markup,
-            progress_step=Step.MANUAL_STORE_SELECTION,
-        )
+        await self._show_brand_picker(update, session, match.candidates, draft)
 
     async def _handle_sales_sources_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
         draft = dict(session["draft_report"])
@@ -961,6 +987,7 @@ class ReportFlow:
             await self._send(update, "UNKNOWN_COMMAND")
             return
 
+        await self._remove_callback_keyboard(update)
         draft = dict(session["draft_report"])
         candidate = draft.get("candidate_distances", {}).get(store_id)
         has_submitted_location = "submitted_latitude" in draft and "submitted_longitude" in draft
@@ -1280,11 +1307,30 @@ class ReportFlow:
         if data == f"{scope.name}:list":
             await self._open_management_list(update, actor, scope)
             return
+        if data.startswith(f"{scope.name}:page:"):
+            page = _callback_int(data, f"{scope.name}:page:")
+            if page is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            await self._open_management_list(update, actor, scope, page=page)
+            return
         if data.startswith(f"{scope.name}:view:"):
-            await self._open_management_detail(update, actor, scope, data.removeprefix(f"{scope.name}:view:"))
+            await self._open_management_detail(
+                update,
+                actor,
+                scope,
+                data.removeprefix(f"{scope.name}:view:"),
+                list_page=_draft_page(session),
+            )
             return
         if data.startswith(f"{scope.name}:edit:"):
-            await self._open_management_edit_menu(update, actor, scope, data.removeprefix(f"{scope.name}:edit:"))
+            await self._open_management_edit_menu(
+                update,
+                actor,
+                scope,
+                data.removeprefix(f"{scope.name}:edit:"),
+                list_page=_draft_page(session),
+            )
             return
         if data.startswith(f"{scope.name}:field:"):
             await self._start_management_field_input(
@@ -1302,6 +1348,7 @@ class ReportFlow:
                 scope,
                 data.removeprefix(f"{scope.name}:deactivate:"),
                 "deactivate",
+                list_page=_draft_page(session),
             )
             return
         if data.startswith(f"{scope.name}:reactivate:"):
@@ -1311,6 +1358,7 @@ class ReportFlow:
                 scope,
                 data.removeprefix(f"{scope.name}:reactivate:"),
                 "reactivate",
+                list_page=_draft_page(session),
             )
             return
         if data == f"{scope.name}:confirm_status":
@@ -1322,6 +1370,7 @@ class ReportFlow:
                 actor,
                 scope,
                 data.removeprefix(f"{scope.name}:reset_link:"),
+                list_page=_draft_page(session),
             )
             return
         if data == f"{scope.name}:confirm_reset":
@@ -1334,7 +1383,7 @@ class ReportFlow:
             await self._open_management_menu(update, actor, scope)
             return
         if data == f"{scope.name}:back:list":
-            await self._open_management_list(update, actor, scope)
+            await self._open_management_list(update, actor, scope, page=_draft_page(session))
             return
         if data == f"{scope.name}:back:detail":
             await self._handle_management_back_to_detail(update, actor, session, scope)
@@ -1371,14 +1420,17 @@ class ReportFlow:
         actor: dict[str, Any],
         scope: ManagementScope,
         notice_key: str | None = None,
+        page: int = 0,
     ) -> None:
+        users = await self._users.list_by_role(scope.managed_role.value)
+        list_page = paginate(users, page, PAGE_SIZE).page
         await self._persist(
             update,
             Step.USER_LIST,
-            {"user_name": actor["name"], "mgmt_scope": scope.name},
+            {"user_name": actor["name"], "mgmt_scope": scope.name, "list_page": list_page},
             user_id=actor["user_id"],
         )
-        await self._send_management_list(update, scope, notice_key)
+        await self._send_management_list(update, scope, notice_key, list_page, users)
 
     async def _open_management_detail(
         self,
@@ -1387,6 +1439,7 @@ class ReportFlow:
         scope: ManagementScope,
         target_id: str,
         notice_key: str | None = None,
+        list_page: int = 0,
     ) -> None:
         target = await self._load_management_target(update, scope, actor, target_id)
         if target is None:
@@ -1395,7 +1448,12 @@ class ReportFlow:
         await self._persist(
             update,
             Step.USER_DETAIL,
-            {"user_name": actor["name"], "mgmt_scope": scope.name, "user_target_id": target["user_id"]},
+            {
+                "user_name": actor["name"],
+                "mgmt_scope": scope.name,
+                "user_target_id": target["user_id"],
+                "list_page": list_page,
+            },
             user_id=actor["user_id"],
         )
         await self._send_management_detail(update, scope, target, notice_key)
@@ -1428,6 +1486,7 @@ class ReportFlow:
         scope: ManagementScope,
         target_id: str,
         back_to_review: bool = False,
+        list_page: int = 0,
     ) -> None:
         target = await self._load_management_target(update, scope, actor, target_id)
         if target is None:
@@ -1450,6 +1509,7 @@ class ReportFlow:
                 "user_name": actor["name"],
                 "mgmt_scope": scope.name,
                 "user_target_id": target["user_id"],
+                "list_page": list_page,
                 "user_form": form,
             },
             user_id=actor["user_id"],
@@ -1592,7 +1652,7 @@ class ReportFlow:
             return
 
         if form.get("mode") == "edit":
-            await self._open_management_detail(update, actor, scope, str(form["target_id"]))
+            await self._open_management_detail(update, actor, scope, str(form["target_id"]), list_page=_draft_page(session))
             return
         await self._open_management_menu(update, actor, scope)
 
@@ -1689,7 +1749,14 @@ class ReportFlow:
                 fields.get("email"),
                 fields.get("notes"),
             )
-            await self._open_management_detail(update, actor, scope, str(form["target_id"]), scope.key("UPDATED"))
+            await self._open_management_detail(
+                update,
+                actor,
+                scope,
+                str(form["target_id"]),
+                scope.key("UPDATED"),
+                list_page=_draft_page(session),
+            )
             return
 
         await self._create_user_with_retry(fields, scope)
@@ -1735,6 +1802,7 @@ class ReportFlow:
         scope: ManagementScope,
         target_id: str,
         intent: str,
+        list_page: int = 0,
     ) -> None:
         target = await self._load_management_target(update, scope, actor, target_id)
         if target is None:
@@ -1745,6 +1813,7 @@ class ReportFlow:
             "mgmt_scope": scope.name,
             "user_target_id": target["user_id"],
             "user_status_intent": intent,
+            "list_page": list_page,
         }
         await self._persist(update, Step.USER_CONFIRM_STATUS, draft, user_id=actor["user_id"])
         key = scope.key("CONFIRM_DEACTIVATE") if intent == "deactivate" else scope.key("CONFIRM_REACTIVATE")
@@ -1774,7 +1843,7 @@ class ReportFlow:
             return
 
         await self._users.set_status(target["user_id"], status)
-        await self._open_management_detail(update, actor, scope, target["user_id"], notice_key)
+        await self._open_management_detail(update, actor, scope, target["user_id"], notice_key, list_page=_draft_page(session))
 
     async def _open_management_reset_link_confirmation(
         self,
@@ -1782,12 +1851,18 @@ class ReportFlow:
         actor: dict[str, Any],
         scope: ManagementScope,
         target_id: str,
+        list_page: int = 0,
     ) -> None:
         target = await self._load_management_target(update, scope, actor, target_id)
         if target is None:
             return
 
-        draft = {"user_name": actor["name"], "mgmt_scope": scope.name, "user_target_id": target["user_id"]}
+        draft = {
+            "user_name": actor["name"],
+            "mgmt_scope": scope.name,
+            "user_target_id": target["user_id"],
+            "list_page": list_page,
+        }
         await self._persist(update, Step.USER_CONFIRM_RESET_LINK, draft, user_id=actor["user_id"])
         await self._send_management_confirmation(
             update,
@@ -1814,7 +1889,14 @@ class ReportFlow:
             return
 
         await self._users.reset_telegram_link(target["user_id"])
-        await self._open_management_detail(update, actor, scope, target["user_id"], scope.key("LINK_RESET"))
+        await self._open_management_detail(
+            update,
+            actor,
+            scope,
+            target["user_id"],
+            scope.key("LINK_RESET"),
+            list_page=_draft_page(session),
+        )
 
     async def _handle_management_back_to_detail(
         self,
@@ -1841,7 +1923,7 @@ class ReportFlow:
         if not target_id:
             await self._open_management_menu(update, actor, scope)
             return
-        await self._open_management_detail(update, actor, scope, target_id)
+        await self._open_management_detail(update, actor, scope, target_id, list_page=_draft_page(session))
 
     async def _send_management_menu(
         self,
@@ -1861,13 +1943,16 @@ class ReportFlow:
         update: Update,
         scope: ManagementScope,
         notice_key: str | None = None,
+        page: int = 0,
+        users: list[dict[str, Any]] | None = None,
     ) -> None:
-        users = await self._users.list_by_role(scope.managed_role.value)
+        if users is None:
+            users = await self._users.list_by_role(scope.managed_role.value)
         key = scope.key("LIST") if users else scope.key("LIST_EMPTY")
         await self._send_or_edit(
             update,
             key,
-            reply_markup=await self._management_list_keyboard(users, scope),
+            reply_markup=await self._management_list_keyboard(users, scope, page),
             notice=await self._notice_text(notice_key),
         )
 
@@ -1981,11 +2066,28 @@ class ReportFlow:
         if data == "stores:list":
             await self._open_store_list(update, actor)
             return
+        if data.startswith("stores:page:"):
+            page = _callback_int(data, "stores:page:")
+            if page is None:
+                await self._send(update, "UNKNOWN_COMMAND")
+                return
+            await self._open_store_list(update, actor, page=page)
+            return
         if data.startswith("stores:view:"):
-            await self._open_store_detail(update, actor, data.removeprefix("stores:view:"))
+            await self._open_store_detail(
+                update,
+                actor,
+                data.removeprefix("stores:view:"),
+                list_page=_draft_page(session),
+            )
             return
         if data.startswith("stores:edit:"):
-            await self._open_store_edit_menu(update, actor, data.removeprefix("stores:edit:"))
+            await self._open_store_edit_menu(
+                update,
+                actor,
+                data.removeprefix("stores:edit:"),
+                list_page=_draft_page(session),
+            )
             return
         if data.startswith("stores:field:"):
             await self._start_store_field_input(
@@ -2001,6 +2103,7 @@ class ReportFlow:
                 actor,
                 data.removeprefix("stores:deactivate:"),
                 "deactivate",
+                list_page=_draft_page(session),
             )
             return
         if data.startswith("stores:reactivate:"):
@@ -2009,6 +2112,7 @@ class ReportFlow:
                 actor,
                 data.removeprefix("stores:reactivate:"),
                 "reactivate",
+                list_page=_draft_page(session),
             )
             return
         if data == "stores:confirm_status":
@@ -2021,7 +2125,7 @@ class ReportFlow:
             await self._open_store_menu(update, actor)
             return
         if data == "stores:back:list":
-            await self._open_store_list(update, actor)
+            await self._open_store_list(update, actor, page=_draft_page(session))
             return
         if data == "stores:back:detail":
             await self._handle_store_back_to_detail(update, actor, session)
@@ -2043,9 +2147,17 @@ class ReportFlow:
         update: Update,
         actor: dict[str, Any],
         notice_key: str | None = None,
+        page: int = 0,
     ) -> None:
-        await self._persist(update, Step.STORE_LIST, {"user_name": actor["name"]}, user_id=actor["user_id"])
-        await self._send_store_list(update, notice_key)
+        stores = await self._stores.list_all()
+        list_page = paginate(stores, page, PAGE_SIZE).page
+        await self._persist(
+            update,
+            Step.STORE_LIST,
+            {"user_name": actor["name"], "list_page": list_page},
+            user_id=actor["user_id"],
+        )
+        await self._send_store_list(update, notice_key, list_page, stores)
 
     async def _open_store_detail(
         self,
@@ -2053,6 +2165,7 @@ class ReportFlow:
         actor: dict[str, Any],
         target_id: str,
         notice_key: str | None = None,
+        list_page: int = 0,
     ) -> None:
         store = await self._load_store_target(update, target_id)
         if store is None:
@@ -2061,7 +2174,7 @@ class ReportFlow:
         await self._persist(
             update,
             Step.STORE_DETAIL,
-            {"user_name": actor["name"], "store_target_id": store.store_id},
+            {"user_name": actor["name"], "store_target_id": store.store_id, "list_page": list_page},
             user_id=actor["user_id"],
         )
         await self._send_store_detail(update, store, notice_key)
@@ -2088,6 +2201,7 @@ class ReportFlow:
         actor: dict[str, Any],
         target_id: str,
         back_to_review: bool = False,
+        list_page: int = 0,
     ) -> None:
         store = await self._load_store_target(update, target_id)
         if store is None:
@@ -2097,11 +2211,17 @@ class ReportFlow:
             "target_id": store.store_id,
             "fields": _store_fields_from_location(store),
             "edit_menu_back": "review" if back_to_review else "detail",
+            "list_page": list_page,
         }
         await self._persist(
             update,
             Step.STORE_EDIT_MENU,
-            {"user_name": actor["name"], "store_target_id": store.store_id, "store_form": form},
+            {
+                "user_name": actor["name"],
+                "store_target_id": store.store_id,
+                "list_page": list_page,
+                "store_form": form,
+            },
             user_id=actor["user_id"],
         )
         await self._send_store_edit_menu(update)
@@ -2167,15 +2287,105 @@ class ReportFlow:
             return
 
         field = str(plan[pos])
+        if field in {"brand", "outlet"}:
+            await self._send_store_form_prompt(update, form)
+            return
         raw_value = "-" if field in STORE_OPTIONAL_FIELDS and await self._is_skip_answer(text) else text
+        await self._save_store_form_field(update, session, form, field, raw_value)
+
+    async def _handle_store_form_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
+        actor = await self._authorize_stores(update)
+        if actor is None:
+            return
+
+        if data == "stores:form:cancel":
+            await self._remove_callback_keyboard(update)
+            await self._cancel(update)
+            return
+        if data == "stores:form:previous":
+            await self._remove_callback_keyboard(update)
+            await self._handle_store_form_previous(update, actor, session)
+            return
+        if data.startswith("stores:setbrand:"):
+            await self._handle_store_form_brand_callback(update, session, data)
+            return
+        if data.startswith("stores:setoutlet:"):
+            await self._handle_store_form_outlet_callback(update, session, data)
+            return
+
+        await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _handle_store_form_brand_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan) or str(plan[pos]) != "brand":
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+
+        brand_id = data.removeprefix("stores:setbrand:")
+        brands = await self._active_brands()
+        brand = next((item for item in brands if item.brand_id == brand_id), None)
+        if brand is None:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        await self._remove_callback_keyboard(update)
+        await self._save_store_form_field(update, session, form, "brand", brand.label)
+
+    async def _handle_store_form_outlet_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan) or str(plan[pos]) != "outlet":
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+
+        outlet_id = data.removeprefix("stores:setoutlet:")
+        outlets = await self._active_outlets()
+        outlet = next((item for item in outlets if item.outlet_id == outlet_id), None)
+        if outlet is None:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        await self._remove_callback_keyboard(update)
+        await self._save_store_form_field(update, session, form, "outlet", outlet.label)
+
+    async def _save_store_form_field(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        form: dict[str, Any],
+        field: str,
+        raw_value: object | None,
+    ) -> None:
         result = validate_store_field(field, raw_value)
         if not result.ok:
             await self._send_store_form_prompt(update, form, result.error_key)
             return
 
+        draft = dict(session["draft_report"])
         fields = dict(form.get("fields", {}))
         fields[field] = result.value
         form["fields"] = fields
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
         pos += 1
         if pos >= len(plan):
             form.pop("plan", None)
@@ -2225,7 +2435,7 @@ class ReportFlow:
             return
 
         if form.get("mode") == "edit":
-            await self._open_store_detail(update, actor, str(form["target_id"]))
+            await self._open_store_detail(update, actor, str(form["target_id"]), list_page=_draft_page(session))
             return
         await self._open_store_menu(update, actor)
 
@@ -2316,7 +2526,7 @@ class ReportFlow:
             await self._stores.update_store(
                 target.store_id,
                 str(fields["brand"]),
-                str(fields["department_store"]),
+                str(fields["outlet"]),
                 str(fields["branch"]),
                 str(fields["city"]),
                 float(fields["latitude"]),
@@ -2324,7 +2534,13 @@ class ReportFlow:
                 int(fields["allowed_radius"]),
                 fields.get("notes"),
             )
-            await self._open_store_detail(update, actor, target.store_id, "STORE_UPDATED")
+            await self._open_store_detail(
+                update,
+                actor,
+                target.store_id,
+                "STORE_UPDATED",
+                list_page=_draft_page(session),
+            )
             return
 
         if await self._store_identity_exists(fields, exclude_store_id=None):
@@ -2346,7 +2562,7 @@ class ReportFlow:
         return is_duplicate_identity(
             await self._stores.list_active(self._settings.active_status),
             str(fields["brand"]),
-            str(fields["department_store"]),
+            str(fields["outlet"]),
             str(fields["branch"]),
             str(fields["city"]),
             exclude_store_id,
@@ -2360,7 +2576,7 @@ class ReportFlow:
             await self._stores.create_store(
                 store_id,
                 str(fields["brand"]),
-                str(fields["department_store"]),
+                str(fields["outlet"]),
                 str(fields["branch"]),
                 str(fields["city"]),
                 float(fields["latitude"]),
@@ -2378,6 +2594,7 @@ class ReportFlow:
         actor: dict[str, Any],
         target_id: str,
         intent: str,
+        list_page: int = 0,
     ) -> None:
         store = await self._load_store_target(update, target_id)
         if store is None:
@@ -2387,6 +2604,7 @@ class ReportFlow:
             "user_name": actor["name"],
             "store_target_id": store.store_id,
             "store_status_intent": intent,
+            "list_page": list_page,
         }
         await self._persist(update, Step.STORE_CONFIRM_STATUS, draft, user_id=actor["user_id"])
         key = "STORE_CONFIRM_DEACTIVATE" if intent == "deactivate" else "STORE_CONFIRM_REACTIVATE"
@@ -2409,7 +2627,13 @@ class ReportFlow:
             notice_key = "STORE_DEACTIVATED"
         elif intent == "reactivate":
             if await self._store_identity_exists(_store_fields_from_location(store), exclude_store_id=store.store_id):
-                await self._open_store_detail(update, actor, store.store_id, "STORE_ERROR_DUPLICATE_IDENTITY")
+                await self._open_store_detail(
+                    update,
+                    actor,
+                    store.store_id,
+                    "STORE_ERROR_DUPLICATE_IDENTITY",
+                    list_page=_draft_page(session),
+                )
                 return
             status = self._settings.active_status
             notice_key = "STORE_REACTIVATED"
@@ -2418,7 +2642,7 @@ class ReportFlow:
             return
 
         await self._stores.set_status(store.store_id, status)
-        await self._open_store_detail(update, actor, store.store_id, notice_key)
+        await self._open_store_detail(update, actor, store.store_id, notice_key, list_page=_draft_page(session))
 
     async def _handle_store_back_to_detail(
         self,
@@ -2443,7 +2667,7 @@ class ReportFlow:
         if not target_id:
             await self._open_store_menu(update, actor)
             return
-        await self._open_store_detail(update, actor, target_id)
+        await self._open_store_detail(update, actor, target_id, list_page=_draft_page(session))
 
     async def _send_store_menu(self, update: Update, notice_key: str | None = None) -> None:
         await self._send_or_edit(
@@ -2453,13 +2677,20 @@ class ReportFlow:
             notice=await self._notice_text(notice_key),
         )
 
-    async def _send_store_list(self, update: Update, notice_key: str | None = None) -> None:
-        stores = await self._stores.list_all()
+    async def _send_store_list(
+        self,
+        update: Update,
+        notice_key: str | None = None,
+        page: int = 0,
+        stores: list[StoreLocation] | None = None,
+    ) -> None:
+        if stores is None:
+            stores = await self._stores.list_all()
         key = "STORE_LIST" if stores else "STORE_LIST_EMPTY"
         await self._send_or_edit(
             update,
             key,
-            reply_markup=await self._store_management_list_keyboard(stores),
+            reply_markup=await self._store_management_list_keyboard(stores, page),
             notice=await self._notice_text(notice_key),
         )
 
@@ -2511,6 +2742,24 @@ class ReportFlow:
             await self._send(update, "UNKNOWN_COMMAND")
             return
         field = str(plan[pos])
+        if field == "brand":
+            await self._send_trusted(
+                update,
+                store_field_prompt_key(field),
+                {"error"},
+                error=await self._notice_text(error_key),
+                reply_markup=await self._store_form_brand_keyboard(),
+            )
+            return
+        if field == "outlet":
+            await self._send_trusted(
+                update,
+                store_field_prompt_key(field),
+                {"error"},
+                error=await self._notice_text(error_key),
+                reply_markup=await self._store_form_outlet_keyboard(),
+            )
+            return
         await self._send_trusted(
             update,
             store_field_prompt_key(field),
@@ -2575,6 +2824,12 @@ class ReportFlow:
     async def _active_sales_sources(self) -> list[GmvSource]:
         return await self._sales_sources.list_active(self._settings.active_status)
 
+    async def _active_brands(self) -> list[Brand]:
+        return await self._brands.list_active(self._settings.active_status)
+
+    async def _active_outlets(self) -> list[Outlet]:
+        return await self._outlets.list_active(self._settings.active_status)
+
     def _current_sales_input(self, draft: dict[str, Any]) -> tuple[str, str]:
         plan = list(draft.get("sales_input_plan", []))
         source_id, field = plan[int(draft.get("sales_input_pos", 0))]
@@ -2612,25 +2867,136 @@ class ReportFlow:
     async def _show_manual_store_selection(self, update: Update, session: dict[str, Any]) -> None:
         draft = dict(session["draft_report"])
         has_submitted_location = "submitted_latitude" in draft and "submitted_longitude" in draft
+        if has_submitted_location:
+            await self._show_brand_picker(update, session, await self._all_active_candidates_from_draft(draft), draft)
+        else:
+            await self._show_brand_picker(update, session, await self._stores.list_active(self._settings.active_status), draft)
+
+    async def _show_brand_picker_for_session(self, update: Update, session: dict[str, Any]) -> None:
+        draft = dict(session["draft_report"])
+        await self._show_brand_picker(update, session, await self._store_picker_items_from_draft(draft), draft)
+
+    async def _show_brand_picker(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        items: list[StoreCandidate] | list[StoreLocation],
+        draft: dict[str, Any] | None = None,
+    ) -> None:
+        draft = dict(session["draft_report"] if draft is None else draft)
+        options = brand_options(items, await self._active_brands())
+        draft["brand_options"] = [
+            {"brand_id": option.brand_id, "label": option.label, "short_code": option.short_code}
+            for option in options
+        ]
+        draft.pop("selected_brand_index", None)
+        draft.pop("store_page", None)
+
+        if len(options) == 1:
+            await self._show_brand_filtered_stores(update, {**session, "draft_report": draft}, 0, 0)
+            return
+
         await self._persist(
             update,
-            Step.MANUAL_STORE_SELECTION,
+            Step.CHOOSE_BRAND,
             draft,
             selected_store_id=session["selected_store_id"],
             user_id=session["user_id"],
         )
+        await self._send_or_edit(
+            update,
+            "ASK_CHOOSE_BRAND",
+            reply_markup=option_picker_keyboard(
+                [option.brand_id for option in options],
+                await self._brand_option_button_labels(options),
+                callback_data=[f"brand:{index}" for index, _ in enumerate(options)],
+            ),
+            progress_step=Step.CHOOSE_BRAND,
+        )
+
+    async def _show_brand_filtered_stores(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        brand_index: int,
+        page: int,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        brand_data = _brand_data_at(draft, brand_index)
+        if brand_data is None:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        has_submitted_location = "submitted_latitude" in draft and "submitted_longitude" in draft
+        brand_label = str(brand_data["label"])
+        back_to_brands_label = (
+            self._templates.render("BUTTON_BACK_TO_BRANDS") if len(draft.get("brand_options", [])) > 1 else None
+        )
         if has_submitted_location:
             candidates = await self._all_active_candidates_from_draft(draft)
-            reply_markup = store_candidate_list_keyboard(candidates, await self._candidate_button_labels(candidates))
+            filtered_candidates = [
+                item for item in filter_by_brand(candidates, brand_label) if isinstance(item, StoreCandidate)
+            ]
+            store_page = paginate(filtered_candidates, page, PAGE_SIZE)
+            draft["selected_brand_index"] = brand_index
+            draft["store_page"] = store_page.page
+            await self._persist(
+                update,
+                Step.MANUAL_STORE_SELECTION,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            reply_markup = store_candidate_list_keyboard(
+                filtered_candidates,
+                await self._candidate_button_labels(filtered_candidates),
+                page=store_page.page,
+                paginate=True,
+                prev_label=self._templates.render("BUTTON_PAGE_PREV") if len(filtered_candidates) > PAGE_SIZE else "",
+                next_label=self._templates.render("BUTTON_PAGE_NEXT") if len(filtered_candidates) > PAGE_SIZE else "",
+                indicator_label=self._templates.render_plain("PAGE_INDICATOR")
+                if len(filtered_candidates) > PAGE_SIZE
+                else "",
+                back_to_brands_label=back_to_brands_label,
+            )
         else:
             stores = await self._stores.list_active(self._settings.active_status)
-            reply_markup = manual_store_list_keyboard(stores, await self._store_labels(stores))
-        await self._send(
+            filtered_stores = [item for item in filter_by_brand(stores, brand_label) if isinstance(item, StoreLocation)]
+            store_page = paginate(filtered_stores, page, PAGE_SIZE)
+            draft["selected_brand_index"] = brand_index
+            draft["store_page"] = store_page.page
+            await self._persist(
+                update,
+                Step.MANUAL_STORE_SELECTION,
+                draft,
+                selected_store_id=session["selected_store_id"],
+                user_id=session["user_id"],
+            )
+            reply_markup = manual_store_list_keyboard(
+                filtered_stores,
+                await self._store_labels(filtered_stores),
+                page=store_page.page,
+                paginate=True,
+                prev_label=self._templates.render("BUTTON_PAGE_PREV") if len(filtered_stores) > PAGE_SIZE else "",
+                next_label=self._templates.render("BUTTON_PAGE_NEXT") if len(filtered_stores) > PAGE_SIZE else "",
+                indicator_label=self._templates.render_plain("PAGE_INDICATOR") if len(filtered_stores) > PAGE_SIZE else "",
+                back_to_brands_label=back_to_brands_label,
+            )
+
+        await self._send_or_edit(
             update,
             "MANUAL_STORE_SELECTION",
             reply_markup=reply_markup,
             progress_step=Step.MANUAL_STORE_SELECTION,
         )
+
+    async def _store_picker_items_from_draft(
+        self,
+        draft: dict[str, Any],
+    ) -> list[StoreCandidate] | list[StoreLocation]:
+        if "submitted_latitude" in draft and "submitted_longitude" in draft:
+            return await self._all_active_candidates_from_draft(draft)
+        return await self._stores.list_active(self._settings.active_status)
 
     async def _all_active_candidates_from_draft(self, draft: dict[str, Any]) -> list[StoreCandidate]:
         candidates = []
@@ -2757,9 +3123,12 @@ class ReportFlow:
         key: str,
         reply_markup: Any = None,
         trusted_tokens: set[str] | None = None,
+        progress_step: Step | None = None,
         **tokens: Any,
     ) -> None:
         await self._refresh_templates()
+        if progress_step is not None:
+            tokens["progress"] = progress_for_step(self._templates, progress_step)
         if trusted_tokens is None:
             text = self._templates.render(key, **tokens)
         else:
@@ -2883,6 +3252,41 @@ class ReportFlow:
             for candidate in candidates
         }
 
+    async def _brand_option_button_labels(self, options: list[BrandOption]) -> dict[str, str]:
+        await self._refresh_templates()
+        return {
+            option.brand_id: self._templates.render_plain(
+                "BRAND_LIST_BUTTON",
+                short_code=option.short_code,
+                label=option.label,
+                count=option.count,
+            )
+            for option in options
+        }
+
+    async def _brand_button_labels(self, brands: list[Brand]) -> dict[str, str]:
+        await self._refresh_templates()
+        return {
+            brand.brand_id: self._templates.render_plain(
+                "BRAND_LIST_BUTTON",
+                short_code=brand.short_code,
+                label=brand.label,
+                count="",
+            )
+            for brand in brands
+        }
+
+    async def _outlet_button_labels(self, outlets: list[Outlet]) -> dict[str, str]:
+        await self._refresh_templates()
+        return {
+            outlet.outlet_id: self._templates.render_plain(
+                "OUTLET_LIST_BUTTON",
+                short_code=outlet.short_code,
+                label=outlet.label,
+            )
+            for outlet in outlets
+        }
+
     async def _distance_meter(self, distance: float | None) -> str:
         await self._refresh_templates()
         return self._templates.render_distance_meter(distance)
@@ -2939,13 +3343,17 @@ class ReportFlow:
             self._templates.render("BUTTON_BACK"),
         )
 
-    async def _management_list_keyboard(self, users: list[dict[str, Any]], scope: ManagementScope):
+    async def _management_list_keyboard(self, users: list[dict[str, Any]], scope: ManagementScope, page: int = 0):
         await self._refresh_templates()
         return management_list_keyboard(
             scope.name,
             users,
             user_list_button_labels(self._templates, scope, users),
             self._templates.render("BUTTON_BACK"),
+            page=page,
+            prev_label=self._templates.render("BUTTON_PAGE_PREV") if len(users) > PAGE_SIZE else "",
+            next_label=self._templates.render("BUTTON_PAGE_NEXT") if len(users) > PAGE_SIZE else "",
+            indicator_label=self._templates.render_plain("PAGE_INDICATOR") if len(users) > PAGE_SIZE else "",
         )
 
     async def _management_detail_keyboard(self, user: dict[str, Any], scope: ManagementScope):
@@ -2987,12 +3395,16 @@ class ReportFlow:
             self._templates.render("BUTTON_BACK"),
         )
 
-    async def _store_management_list_keyboard(self, stores: list[StoreLocation]):
+    async def _store_management_list_keyboard(self, stores: list[StoreLocation], page: int = 0):
         await self._refresh_templates()
         return store_list_keyboard(
             stores,
             store_list_button_labels(self._templates, stores),
             self._templates.render("BUTTON_BACK"),
+            page=page,
+            prev_label=self._templates.render("BUTTON_PAGE_PREV") if len(stores) > PAGE_SIZE else "",
+            next_label=self._templates.render("BUTTON_PAGE_NEXT") if len(stores) > PAGE_SIZE else "",
+            indicator_label=self._templates.render_plain("PAGE_INDICATOR") if len(stores) > PAGE_SIZE else "",
         )
 
     async def _store_management_detail_keyboard(self, store: StoreLocation):
@@ -3029,6 +3441,32 @@ class ReportFlow:
             self._templates.render("BUTTON_PREVIOUS"),
             self._templates.render("BUTTON_CANCEL"),
             self._templates.render("BUTTON_SKIP") if field in STORE_OPTIONAL_FIELDS else None,
+        )
+
+    async def _store_form_brand_keyboard(self):
+        brands = await self._active_brands()
+        await self._refresh_templates()
+        return option_picker_keyboard(
+            [brand.brand_id for brand in brands],
+            await self._brand_button_labels(brands),
+            callback_data=[f"stores:setbrand:{brand.brand_id}" for brand in brands],
+            previous_label=self._templates.render("BUTTON_PREVIOUS"),
+            previous_callback_data="stores:form:previous",
+            cancel_label=self._templates.render("BUTTON_CANCEL"),
+            cancel_callback_data="stores:form:cancel",
+        )
+
+    async def _store_form_outlet_keyboard(self):
+        outlets = await self._active_outlets()
+        await self._refresh_templates()
+        return option_picker_keyboard(
+            [outlet.outlet_id for outlet in outlets],
+            await self._outlet_button_labels(outlets),
+            callback_data=[f"stores:setoutlet:{outlet.outlet_id}" for outlet in outlets],
+            previous_label=self._templates.render("BUTTON_PREVIOUS"),
+            previous_callback_data="stores:form:previous",
+            cancel_label=self._templates.render("BUTTON_CANCEL"),
+            cancel_callback_data="stores:form:cancel",
         )
 
     async def _user_form_navigation_keyboard(self, field: str):
@@ -3260,7 +3698,7 @@ class ReportFlow:
         first = candidates[0].store
         area = self._templates.render_area_label(first)
         if all(
-            candidate.store.department_store == first.department_store
+            candidate.store.outlet == first.outlet
             and candidate.store.branch == first.branch
             and candidate.store.city == first.city
             for candidate in candidates
@@ -3286,7 +3724,7 @@ def _candidate_distances(candidates: list[StoreCandidate]) -> dict[str, dict[str
 def _store_fields_from_location(store: StoreLocation) -> dict[str, Any]:
     return {
         "brand": store.brand,
-        "department_store": store.department_store,
+        "outlet": store.outlet,
         "branch": store.branch,
         "city": store.city,
         "latitude": store.latitude,
@@ -3304,3 +3742,29 @@ def _message_text(update: Update) -> str | None:
 
 def _message_has_location(update: Update) -> bool:
     return update.message is not None and update.message.location is not None
+
+
+def _callback_int(data: str, prefix: str) -> int | None:
+    try:
+        return int(data.removeprefix(prefix))
+    except ValueError:
+        return None
+
+
+def _int_or_none(value: object) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _draft_page(session: dict[str, Any]) -> int:
+    return _int_or_none(dict(session["draft_report"]).get("list_page")) or 0
+
+
+def _brand_data_at(draft: dict[str, Any], index: int) -> dict[str, Any] | None:
+    options = list(draft.get("brand_options", []))
+    if index < 0 or index >= len(options):
+        return None
+    option = options[index]
+    return dict(option) if isinstance(option, dict) else None

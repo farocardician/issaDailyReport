@@ -45,6 +45,9 @@ DEPRECATED_UI_TRANSLATE_KEYS = (
     "PROGRESS_ISSUE_REASON",
     "PROGRESS_ISSUE_STOCK",
     "PROGRESS_ISSUE_NOTE",
+    "ASK_STORE_DEPARTMENT",
+    "BUTTON_STORE_FIELD_DEPARTMENT",
+    "STORE_ERROR_DEPARTMENT_REQUIRED",
 )
 
 
@@ -55,6 +58,8 @@ async def main() -> None:
         await bootstrap_schema(pool)
         await seed_stores(pool)
         await seed_users(pool)
+        await seed_outlets(pool)
+        await seed_brands(pool)
         await seed_gmv_sources(pool)
         await seed_stock_issues(pool)
         await seed_ui_translate(pool)
@@ -69,12 +74,12 @@ async def seed_stores(pool) -> None:
             await connection.execute(
                 """
                 INSERT INTO stores (
-                    store_id, department_store, branch, city, brand, latitude, longitude,
+                    store_id, outlet, branch, city, brand, latitude, longitude,
                     allowed_radius_meter, status, notes
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 ON CONFLICT (store_id) DO UPDATE
-                SET department_store = EXCLUDED.department_store,
+                SET outlet = EXCLUDED.outlet,
                     branch = EXCLUDED.branch,
                     city = EXCLUDED.city,
                     brand = EXCLUDED.brand,
@@ -85,7 +90,7 @@ async def seed_stores(pool) -> None:
                     notes = EXCLUDED.notes
                 """,
                 row["Store_ID"],
-                row["Department_Store"],
+                row["Outlet"],
                 row["Branch"],
                 row["City"],
                 row["Brand"],
@@ -95,6 +100,7 @@ async def seed_stores(pool) -> None:
                 row["Status"],
                 _blank_to_none(row["Notes"]),
             )
+        await connection.execute("UPDATE stores SET outlet = 'Sogo' WHERE outlet = 'SOGO'")
 
 
 async def seed_users(pool) -> None:
@@ -151,6 +157,54 @@ async def seed_gmv_sources(pool) -> None:
                 row["Label"],
                 row["Source_Type"],
                 _bool(row["Requires_Traffic"]),
+                int(row["Sort_Order"]),
+                row["Status"],
+            )
+
+
+async def seed_brands(pool) -> None:
+    rows = _read_csv(REFERENCE_DIR / "brands.csv")
+    async with pool.acquire() as connection:
+        for row in rows:
+            await connection.execute(
+                """
+                INSERT INTO brands (
+                    brand_id, label, short_code, sort_order, status
+                )
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (brand_id) DO UPDATE
+                SET label = EXCLUDED.label,
+                    short_code = EXCLUDED.short_code,
+                    sort_order = EXCLUDED.sort_order,
+                    status = EXCLUDED.status
+                """,
+                row["Brand_ID"],
+                row["Label"],
+                row["Short_Code"],
+                int(row["Sort_Order"]),
+                row["Status"],
+            )
+
+
+async def seed_outlets(pool) -> None:
+    rows = _read_csv(REFERENCE_DIR / "outlet.csv")
+    async with pool.acquire() as connection:
+        for row in rows:
+            await connection.execute(
+                """
+                INSERT INTO outlet (
+                    outlet_id, label, short_code, sort_order, status
+                )
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (outlet_id) DO UPDATE
+                SET label = EXCLUDED.label,
+                    short_code = EXCLUDED.short_code,
+                    sort_order = EXCLUDED.sort_order,
+                    status = EXCLUDED.status
+                """,
+                row["Outlet_ID"],
+                row["Label"],
+                row["Short_Code"],
                 int(row["Sort_Order"]),
                 row["Status"],
             )

@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS stores (
     store_id text PRIMARY KEY,
-    department_store text NOT NULL,
+    outlet text NOT NULL,
     branch text NOT NULL,
     city text NOT NULL,
     brand text NOT NULL,
@@ -10,6 +10,13 @@ CREATE TABLE IF NOT EXISTS stores (
     status text NOT NULL,
     notes text
 );
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='department_store')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='outlet') THEN
+    ALTER TABLE stores RENAME COLUMN department_store TO outlet;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS users (
     user_id text PRIMARY KEY,
@@ -41,6 +48,28 @@ CREATE TABLE IF NOT EXISTS gmv_sources (
 
 CREATE INDEX IF NOT EXISTS idx_gmv_sources_active_order
     ON gmv_sources(status, sort_order);
+
+CREATE TABLE IF NOT EXISTS brands (
+    brand_id text PRIMARY KEY,
+    label text NOT NULL,
+    short_code text NOT NULL DEFAULT '',
+    sort_order integer NOT NULL DEFAULT 0,
+    status text NOT NULL DEFAULT 'Aktif'
+);
+
+CREATE INDEX IF NOT EXISTS idx_brands_active_order
+    ON brands(status, sort_order);
+
+CREATE TABLE IF NOT EXISTS outlet (
+    outlet_id text PRIMARY KEY,
+    label text NOT NULL,
+    short_code text NOT NULL DEFAULT '',
+    sort_order integer NOT NULL DEFAULT 0,
+    status text NOT NULL DEFAULT 'Aktif'
+);
+
+CREATE INDEX IF NOT EXISTS idx_outlet_active_order
+    ON outlet(status, sort_order);
 
 CREATE TABLE IF NOT EXISTS stock_issues (
     stock_issue_id text PRIMARY KEY,

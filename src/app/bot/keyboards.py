@@ -2,7 +2,10 @@ from collections.abc import Mapping, Sequence
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
+from app.domain.pagination import paginate as paginate_items
 from app.domain.store_matching import StoreCandidate, StoreLocation
+
+PAGE_SIZE = 6
 
 
 def start_location_keyboard(location_label: str, manual_store_label: str) -> ReplyKeyboardMarkup:
@@ -81,11 +84,27 @@ def management_list_keyboard(
     users: Sequence[Mapping[str, object]],
     labels: Mapping[str, str],
     back_label: str,
+    page: int = 0,
+    prev_label: str = "",
+    next_label: str = "",
+    indicator_label: str = "",
 ) -> InlineKeyboardMarkup:
+    user_page = paginate_items(users, page, PAGE_SIZE)
     rows = [
         [InlineKeyboardButton(labels[str(user["user_id"])], callback_data=f"{prefix}:view:{user['user_id']}")]
-        for user in users
+        for user in user_page.items
     ]
+    if user_page.total_pages > 1:
+        rows.append(
+            pagination_nav_row(
+                user_page.page,
+                user_page.total_pages,
+                lambda target_page: f"{prefix}:page:{target_page}",
+                prev_label,
+                next_label,
+                indicator_label,
+            )
+        )
     rows.append([InlineKeyboardButton(back_label, callback_data=f"{prefix}:back:menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -229,18 +248,39 @@ def store_candidate_list_keyboard(
     candidates: Sequence[StoreCandidate],
     candidate_labels: Mapping[str, str],
     other_store_label: str | None = None,
+    page: int = 0,
+    paginate: bool = False,
+    prev_label: str = "",
+    next_label: str = "",
+    indicator_label: str = "",
+    back_to_brands_label: str | None = None,
 ) -> InlineKeyboardMarkup:
+    candidate_page = paginate_items(candidates, page, PAGE_SIZE)
+    page_candidates = candidate_page.items if paginate else list(candidates)
     rows = [
-            [
-                InlineKeyboardButton(
-                    candidate_labels[candidate.store.store_id],
-                    callback_data=f"store:{candidate.store.store_id}",
-                )
-            ]
-            for candidate in candidates
+        [
+            InlineKeyboardButton(
+                candidate_labels[candidate.store.store_id],
+                callback_data=f"store:{candidate.store.store_id}",
+            )
+        ]
+        for candidate in page_candidates
     ]
+    if paginate and candidate_page.total_pages > 1:
+        rows.append(
+            pagination_nav_row(
+                candidate_page.page,
+                candidate_page.total_pages,
+                lambda target_page: f"store_page:{target_page}",
+                prev_label,
+                next_label,
+                indicator_label,
+            )
+        )
     if other_store_label is not None:
         rows.append([InlineKeyboardButton(other_store_label, callback_data="manual:stores")])
+    if back_to_brands_label is not None:
+        rows.append([InlineKeyboardButton(back_to_brands_label, callback_data="manual:brands")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -248,11 +288,27 @@ def store_list_keyboard(
     stores: Sequence[StoreLocation],
     labels: Mapping[str, str],
     back_label: str,
+    page: int = 0,
+    prev_label: str = "",
+    next_label: str = "",
+    indicator_label: str = "",
 ) -> InlineKeyboardMarkup:
+    store_page = paginate_items(stores, page, PAGE_SIZE)
     rows = [
         [InlineKeyboardButton(labels[store.store_id], callback_data=f"stores:view:{store.store_id}")]
-        for store in stores
+        for store in store_page.items
     ]
+    if store_page.total_pages > 1:
+        rows.append(
+            pagination_nav_row(
+                store_page.page,
+                store_page.total_pages,
+                lambda target_page: f"stores:page:{target_page}",
+                prev_label,
+                next_label,
+                indicator_label,
+            )
+        )
     rows.append([InlineKeyboardButton(back_label, callback_data="stores:back:menu")])
     return InlineKeyboardMarkup(rows)
 
@@ -276,18 +332,91 @@ def store_detail_keyboard(
     )
 
 
-def manual_store_list_keyboard(stores: Sequence[StoreLocation], store_labels: Mapping[str, str]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def manual_store_list_keyboard(
+    stores: Sequence[StoreLocation],
+    store_labels: Mapping[str, str],
+    page: int = 0,
+    paginate: bool = False,
+    prev_label: str = "",
+    next_label: str = "",
+    indicator_label: str = "",
+    back_to_brands_label: str | None = None,
+) -> InlineKeyboardMarkup:
+    store_page = paginate_items(stores, page, PAGE_SIZE)
+    page_stores = store_page.items if paginate else list(stores)
+    rows = [
         [
-            [
-                InlineKeyboardButton(
-                    store_labels[store.store_id],
-                    callback_data=f"store:{store.store_id}",
-                )
-            ]
-            for store in stores
+            InlineKeyboardButton(
+                store_labels[store.store_id],
+                callback_data=f"store:{store.store_id}",
+            )
         ]
+        for store in page_stores
+    ]
+    if paginate and store_page.total_pages > 1:
+        rows.append(
+            pagination_nav_row(
+                store_page.page,
+                store_page.total_pages,
+                lambda target_page: f"store_page:{target_page}",
+                prev_label,
+                next_label,
+                indicator_label,
+            )
+        )
+    if back_to_brands_label is not None:
+        rows.append([InlineKeyboardButton(back_to_brands_label, callback_data="manual:brands")])
+    return InlineKeyboardMarkup(rows)
+
+
+def option_picker_keyboard(
+    option_ids: Sequence[str],
+    button_labels: Mapping[str, str],
+    callback_data: Sequence[str] | None = None,
+    previous_label: str | None = None,
+    previous_callback_data: str | None = None,
+    cancel_label: str | None = None,
+    cancel_callback_data: str | None = None,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                button_labels[option_id],
+                callback_data=callback_data[index] if callback_data is not None else option_id,
+            )
+        ]
+        for index, option_id in enumerate(option_ids)
+    ]
+    navigation_row = []
+    if previous_label is not None and previous_callback_data is not None:
+        navigation_row.append(InlineKeyboardButton(previous_label, callback_data=previous_callback_data))
+    if cancel_label is not None and cancel_callback_data is not None:
+        navigation_row.append(InlineKeyboardButton(cancel_label, callback_data=cancel_callback_data))
+    if navigation_row:
+        rows.append(navigation_row)
+    return InlineKeyboardMarkup(rows)
+
+
+def pagination_nav_row(
+    page: int,
+    total_pages: int,
+    page_callback,
+    prev_label: str,
+    next_label: str,
+    indicator_label: str,
+) -> list[InlineKeyboardButton]:
+    row = []
+    if page > 0:
+        row.append(InlineKeyboardButton(prev_label, callback_data=page_callback(page - 1)))
+    row.append(
+        InlineKeyboardButton(
+            _page_indicator_label(indicator_label, page, total_pages),
+            callback_data=_noop_callback(page_callback(page)),
+        )
     )
+    if page < total_pages - 1:
+        row.append(InlineKeyboardButton(next_label, callback_data=page_callback(page + 1)))
+    return row
 
 
 def summary_keyboard(submit_label: str, restart_label: str, cancel_label: str) -> InlineKeyboardMarkup:
@@ -402,3 +531,15 @@ def stock_issue_keyboard(
     if next_label is not None:
         rows.append([InlineKeyboardButton(next_label, callback_data="stock_issue:continue")])
     return InlineKeyboardMarkup(rows)
+
+
+def _page_indicator_label(indicator_label: str, page: int, total_pages: int) -> str:
+    return indicator_label.replace("{{current}}", str(page + 1)).replace("{{total}}", str(total_pages))
+
+
+def _noop_callback(current_page_callback: str) -> str:
+    if ":page:" in current_page_callback:
+        return f"{current_page_callback.split(':page:', 1)[0]}:noop"
+    if ":" in current_page_callback:
+        return f"{current_page_callback.rsplit(':', 1)[0]}:noop"
+    return "noop"

@@ -24,7 +24,7 @@ class MessageTemplates:
         return self.render_plain(
             "STORE_LABEL_FORMAT",
             brand=_get(store, "brand"),
-            department_store=_get(store, "department_store"),
+            outlet=_get(store, "outlet"),
             branch=_get(store, "branch"),
             city=_get(store, "city"),
         )
@@ -32,7 +32,7 @@ class MessageTemplates:
     def render_area_label(self, store: StoreLocation | Mapping[str, Any]) -> str:
         return self.render_plain(
             "AREA_LABEL_FORMAT",
-            department_store=_get(store, "department_store"),
+            outlet=_get(store, "outlet"),
             branch=_get(store, "branch"),
             city=_get(store, "city"),
         )
