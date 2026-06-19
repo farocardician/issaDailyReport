@@ -6,6 +6,7 @@ from app.domain.pagination import paginate as paginate_items
 from app.domain.store_matching import StoreCandidate, StoreLocation
 
 PAGE_SIZE = 6
+PICKER_PAGE_SIZE = 10
 
 
 def start_location_keyboard(location_label: str, manual_store_label: str) -> ReplyKeyboardMarkup:
@@ -394,6 +395,50 @@ def option_picker_keyboard(
         navigation_row.append(InlineKeyboardButton(cancel_label, callback_data=cancel_callback_data))
     if navigation_row:
         rows.append(navigation_row)
+    return InlineKeyboardMarkup(rows)
+
+
+def paginated_option_keyboard(
+    option_ids: Sequence[str],
+    button_labels: Mapping[str, str],
+    set_callback,
+    page_callback,
+    page: int,
+    prev_label: str,
+    next_label: str,
+    indicator_label: str,
+    previous_label: str,
+    previous_cb: str,
+    cancel_label: str,
+    cancel_cb: str,
+    columns: int = 2,
+) -> InlineKeyboardMarkup:
+    option_page = paginate_items(option_ids, page, PICKER_PAGE_SIZE)
+    buttons = [
+        InlineKeyboardButton(
+            button_labels[option_id],
+            callback_data=set_callback(option_id),
+        )
+        for option_id in option_page.items
+    ]
+    rows = [buttons[index : index + columns] for index in range(0, len(buttons), columns)]
+    if option_page.total_pages > 1:
+        rows.append(
+            pagination_nav_row(
+                option_page.page,
+                option_page.total_pages,
+                page_callback,
+                prev_label,
+                next_label,
+                indicator_label,
+            )
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(previous_label, callback_data=previous_cb),
+            InlineKeyboardButton(cancel_label, callback_data=cancel_cb),
+        ]
+    )
     return InlineKeyboardMarkup(rows)
 
 

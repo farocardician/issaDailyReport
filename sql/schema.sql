@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS stores (
     store_id text PRIMARY KEY,
     outlet text NOT NULL,
     branch text NOT NULL,
+    province text,
     city text NOT NULL,
     brand text NOT NULL,
     latitude double precision,
@@ -11,12 +12,26 @@ CREATE TABLE IF NOT EXISTS stores (
     notes text
 );
 
+ALTER TABLE stores
+    ADD COLUMN IF NOT EXISTS province text;
+
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='department_store')
      AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='stores' AND column_name='outlet') THEN
     ALTER TABLE stores RENAME COLUMN department_store TO outlet;
   END IF;
 END $$;
+
+CREATE TABLE IF NOT EXISTS regions (
+    province text NOT NULL,
+    city text NOT NULL,
+    short_code text NOT NULL DEFAULT '',
+    status text NOT NULL DEFAULT 'Aktif',
+    PRIMARY KEY (province, city)
+);
+
+CREATE INDEX IF NOT EXISTS idx_regions_active
+    ON regions(status, province, city);
 
 CREATE TABLE IF NOT EXISTS users (
     user_id text PRIMARY KEY,

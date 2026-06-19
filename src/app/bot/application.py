@@ -8,6 +8,7 @@ from app.config import Settings
 from app.db import bootstrap_schema, create_pool
 from app.repositories.brands import BrandsRepository
 from app.repositories.outlet import OutletRepository
+from app.repositories.regions import RegionsRepository
 from app.repositories.reports import ReportsRepository
 from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
@@ -33,6 +34,7 @@ def build_application(settings: Settings) -> Application:
             stores=StoresRepository(pool),
             brands=BrandsRepository(pool),
             outlets=OutletRepository(pool),
+            regions=RegionsRepository(pool),
             sales_sources=SalesSourcesRepository(pool),
             stock_issues=StockIssuesRepository(pool),
             users=UsersRepository(pool),

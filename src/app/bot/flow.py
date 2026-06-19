@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from telegram import ReplyKeyboardRemove, Update
+from telegram import InlineKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.constants import ChatType, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
@@ -22,6 +22,7 @@ from app.bot.keyboards import (
     manual_store_list_keyboard,
     none_reply_keyboard,
     option_picker_keyboard,
+    paginated_option_keyboard,
     retry_location_keyboard,
     sales_edit_menu_keyboard,
     sales_input_navigation_keyboard,
@@ -117,6 +118,7 @@ from app.domain.user_management import (
 from app.domain.validation import normalize_text_dash, parse_int_lenient
 from app.repositories.brands import BrandsRepository
 from app.repositories.outlet import OutletRepository
+from app.repositories.regions import RegionsRepository
 from app.repositories.reports import ReportsRepository
 from app.repositories.sales_sources import SalesSourcesRepository
 from app.repositories.sessions import SessionsRepository
@@ -170,6 +172,7 @@ class ReportFlow:
         users: UsersRepository,
         reports: ReportsRepository,
         sessions: SessionsRepository,
+        regions: RegionsRepository | None = None,
     ) -> None:
         self._settings = settings
         self._templates = templates
@@ -177,6 +180,7 @@ class ReportFlow:
         self._stores = stores
         self._brands = brands
         self._outlets = outlets
+        self._regions = regions
         self._sales_sources = sales_sources
         self._stock_issues = stock_issues
         self._users = users
@@ -461,7 +465,14 @@ class ReportFlow:
             )
             return
 
-        await self._show_brand_picker(update, session, match.candidates, draft)
+        draft["manual_store_prompt_key"] = "LOCATION_NOT_FOUND"
+        await self._show_brand_picker(
+            update,
+            session,
+            match.candidates,
+            draft,
+            brand_prompt_key="LOCATION_NOT_FOUND_CHOOSE_BRAND",
+        )
 
     async def _handle_sales_sources_callback(self, update: Update, session: dict[str, Any], data: str) -> None:
         draft = dict(session["draft_report"])
@@ -2244,7 +2255,7 @@ class ReportFlow:
             return
         if not await self._ensure_store_form_target_allowed(update, form):
             return
-        form["plan"] = [field]
+        form["plan"] = ["province", "city"] if field == "province" else [field]
         form["pos"] = 0
         form["return_to"] = "review"
         draft["store_form"] = form
@@ -2287,7 +2298,7 @@ class ReportFlow:
             return
 
         field = str(plan[pos])
-        if field in {"brand", "outlet"}:
+        if field in {"brand", "outlet", "province", "city"}:
             await self._send_store_form_prompt(update, form)
             return
         raw_value = "-" if field in STORE_OPTIONAL_FIELDS and await self._is_skip_answer(text) else text
@@ -2306,14 +2317,61 @@ class ReportFlow:
             await self._remove_callback_keyboard(update)
             await self._handle_store_form_previous(update, actor, session)
             return
+        if data.endswith(":noop"):
+            return
+        if data.startswith("stores:provpage:"):
+            await self._handle_store_form_page_callback(update, session, data, "province", "prov_page")
+            return
+        if data.startswith("stores:citypage:"):
+            await self._handle_store_form_page_callback(update, session, data, "city", "city_page")
+            return
         if data.startswith("stores:setbrand:"):
             await self._handle_store_form_brand_callback(update, session, data)
             return
         if data.startswith("stores:setoutlet:"):
             await self._handle_store_form_outlet_callback(update, session, data)
             return
+        if data.startswith("stores:setprov:"):
+            await self._handle_store_form_province_callback(update, session, data)
+            return
+        if data.startswith("stores:setcity:"):
+            await self._handle_store_form_city_callback(update, session, data)
+            return
 
         await self._send(update, "UNKNOWN_COMMAND")
+
+    async def _handle_store_form_page_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+        expected_field: str,
+        page_key: str,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan) or str(plan[pos]) != expected_field:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+
+        page = _callback_int(data, f"stores:{'provpage' if page_key == 'prov_page' else 'citypage'}:")
+        if page is None:
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        form[page_key] = page
+        draft["store_form"] = form
+        await self._persist(
+            update,
+            Step.STORE_FORM_INPUT,
+            draft,
+            selected_store_id=session["selected_store_id"],
+            user_id=session["user_id"],
+        )
+        await self._send_store_form_prompt(update, form)
 
     async def _handle_store_form_brand_callback(
         self,
@@ -2366,6 +2424,58 @@ class ReportFlow:
 
         await self._remove_callback_keyboard(update)
         await self._save_store_form_field(update, session, form, "outlet", outlet.label)
+
+    async def _handle_store_form_province_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan) or str(plan[pos]) != "province":
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+
+        index = _callback_int(data, "stores:setprov:")
+        provinces = await self._active_provinces()
+        if index is None or index < 0 or index >= len(provinces):
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        await self._remove_callback_keyboard(update)
+        form["city_page"] = 0
+        await self._save_store_form_field(update, session, form, "province", provinces[index])
+
+    async def _handle_store_form_city_callback(
+        self,
+        update: Update,
+        session: dict[str, Any],
+        data: str,
+    ) -> None:
+        draft = dict(session["draft_report"])
+        form = dict(draft.get("store_form", {}))
+        plan = list(form.get("plan", []))
+        pos = int(form.get("pos", 0))
+        if not plan or pos >= len(plan) or str(plan[pos]) != "city":
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+        if not await self._ensure_store_form_target_allowed(update, form):
+            return
+
+        province = str(dict(form.get("fields", {})).get("province", ""))
+        index = _callback_int(data, "stores:setcity:")
+        cities = await self._active_cities(province)
+        if index is None or index < 0 or index >= len(cities):
+            await self._send(update, "UNKNOWN_COMMAND")
+            return
+
+        await self._remove_callback_keyboard(update)
+        await self._save_store_form_field(update, session, form, "city", cities[index])
 
     async def _save_store_form_field(
         self,
@@ -2528,6 +2638,7 @@ class ReportFlow:
                 str(fields["brand"]),
                 str(fields["outlet"]),
                 str(fields["branch"]),
+                str(fields["province"]),
                 str(fields["city"]),
                 float(fields["latitude"]),
                 float(fields["longitude"]),
@@ -2578,6 +2689,7 @@ class ReportFlow:
                 str(fields["brand"]),
                 str(fields["outlet"]),
                 str(fields["branch"]),
+                str(fields["province"]),
                 str(fields["city"]),
                 float(fields["latitude"]),
                 float(fields["longitude"]),
@@ -2743,21 +2855,40 @@ class ReportFlow:
             return
         field = str(plan[pos])
         if field == "brand":
-            await self._send_trusted(
+            await self._send_or_edit(
                 update,
                 store_field_prompt_key(field),
-                {"error"},
+                trusted_tokens={"error"},
                 error=await self._notice_text(error_key),
                 reply_markup=await self._store_form_brand_keyboard(),
             )
             return
         if field == "outlet":
-            await self._send_trusted(
+            await self._send_or_edit(
                 update,
                 store_field_prompt_key(field),
-                {"error"},
+                trusted_tokens={"error"},
                 error=await self._notice_text(error_key),
                 reply_markup=await self._store_form_outlet_keyboard(),
+            )
+            return
+        if field == "province":
+            await self._send_or_edit(
+                update,
+                store_field_prompt_key(field),
+                trusted_tokens={"error"},
+                error=await self._notice_text(error_key),
+                reply_markup=await self._store_form_province_keyboard(int(form.get("prov_page", 0))),
+            )
+            return
+        if field == "city":
+            province = str(dict(form.get("fields", {})).get("province", ""))
+            await self._send_or_edit(
+                update,
+                store_field_prompt_key(field),
+                trusted_tokens={"error"},
+                error=await self._notice_text(error_key),
+                reply_markup=await self._store_form_city_keyboard(province, int(form.get("city_page", 0))),
             )
             return
         await self._send_trusted(
@@ -2830,6 +2961,16 @@ class ReportFlow:
     async def _active_outlets(self) -> list[Outlet]:
         return await self._outlets.list_active(self._settings.active_status)
 
+    async def _active_provinces(self) -> list[str]:
+        if self._regions is None:
+            return []
+        return await self._regions.list_provinces(self._settings.active_status)
+
+    async def _active_cities(self, province: str) -> list[str]:
+        if self._regions is None:
+            return []
+        return await self._regions.list_cities(province, self._settings.active_status)
+
     def _current_sales_input(self, draft: dict[str, Any]) -> tuple[str, str]:
         plan = list(draft.get("sales_input_plan", []))
         source_id, field = plan[int(draft.get("sales_input_pos", 0))]
@@ -2882,6 +3023,7 @@ class ReportFlow:
         session: dict[str, Any],
         items: list[StoreCandidate] | list[StoreLocation],
         draft: dict[str, Any] | None = None,
+        brand_prompt_key: str = "ASK_CHOOSE_BRAND",
     ) -> None:
         draft = dict(session["draft_report"] if draft is None else draft)
         options = brand_options(items, await self._active_brands())
@@ -2905,7 +3047,7 @@ class ReportFlow:
         )
         await self._send_or_edit(
             update,
-            "ASK_CHOOSE_BRAND",
+            brand_prompt_key,
             reply_markup=option_picker_keyboard(
                 [option.brand_id for option in options],
                 await self._brand_option_button_labels(options),
@@ -2985,7 +3127,7 @@ class ReportFlow:
 
         await self._send_or_edit(
             update,
-            "MANUAL_STORE_SELECTION",
+            str(draft.get("manual_store_prompt_key", "MANUAL_STORE_SELECTION")),
             reply_markup=reply_markup,
             progress_step=Step.MANUAL_STORE_SELECTION,
         )
@@ -3139,6 +3281,7 @@ class ReportFlow:
             callback_query is not None
             and callback_query.message is not None
             and hasattr(callback_query, "edit_message_text")
+            and (reply_markup is None or isinstance(reply_markup, InlineKeyboardMarkup))
         ):
             try:
                 await callback_query.edit_message_text(
@@ -3469,6 +3612,44 @@ class ReportFlow:
             cancel_callback_data="stores:form:cancel",
         )
 
+    async def _store_form_province_keyboard(self, page: int):
+        provinces = await self._active_provinces()
+        await self._refresh_templates()
+        return paginated_option_keyboard(
+            [str(index) for index, _ in enumerate(provinces)],
+            {str(index): province for index, province in enumerate(provinces)},
+            lambda province_index: f"stores:setprov:{province_index}",
+            lambda target_page: f"stores:provpage:{target_page}",
+            page,
+            self._templates.render("BUTTON_PAGE_PREV"),
+            self._templates.render("BUTTON_PAGE_NEXT"),
+            self._templates.render_plain("PAGE_INDICATOR"),
+            self._templates.render("BUTTON_PREVIOUS"),
+            "stores:form:previous",
+            self._templates.render("BUTTON_CANCEL"),
+            "stores:form:cancel",
+            columns=2,
+        )
+
+    async def _store_form_city_keyboard(self, province: str, page: int):
+        cities = await self._active_cities(province)
+        await self._refresh_templates()
+        return paginated_option_keyboard(
+            [str(index) for index, _ in enumerate(cities)],
+            {str(index): city for index, city in enumerate(cities)},
+            lambda city_index: f"stores:setcity:{city_index}",
+            lambda target_page: f"stores:citypage:{target_page}",
+            page,
+            self._templates.render("BUTTON_PAGE_PREV"),
+            self._templates.render("BUTTON_PAGE_NEXT"),
+            self._templates.render_plain("PAGE_INDICATOR"),
+            self._templates.render("BUTTON_PREVIOUS"),
+            "stores:form:previous",
+            self._templates.render("BUTTON_CANCEL"),
+            "stores:form:cancel",
+            columns=2,
+        )
+
     async def _user_form_navigation_keyboard(self, field: str):
         await self._refresh_templates()
         return user_form_navigation_keyboard(
@@ -3726,6 +3907,7 @@ def _store_fields_from_location(store: StoreLocation) -> dict[str, Any]:
         "brand": store.brand,
         "outlet": store.outlet,
         "branch": store.branch,
+        "province": store.province,
         "city": store.city,
         "latitude": store.latitude,
         "longitude": store.longitude,

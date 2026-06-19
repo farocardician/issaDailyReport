@@ -61,7 +61,7 @@ def test_location_not_found_sends_one_manual_store_selection_message() -> None:
     assert sessions.upserts[-1]["current_step"] == Step.MANUAL_STORE_SELECTION
     assert sessions.upserts[-1]["user_id"] == "USR-1"
     assert len(chat.sent_messages) == 1
-    assert "MANUAL_STORE_SELECTION" in chat.sent_messages[0]["text"]
+    assert "LOCATION_NOT_FOUND" in chat.sent_messages[0]["text"]
     assert _callback_data(chat.sent_messages[0]) == ["store:S001"]
     assert all("UNKNOWN_COMMAND" not in message["text"] for message in chat.sent_messages)
 
@@ -81,7 +81,7 @@ def test_location_not_found_with_multiple_brands_shows_brand_picker() -> None:
     asyncio.run(flow.handle_message(_location_update(chat, latitude=0, longitude=0), SimpleNamespace()))
 
     assert sessions.upserts[-1]["current_step"] == Step.CHOOSE_BRAND
-    assert "ASK_CHOOSE_BRAND" in chat.sent_messages[0]["text"]
+    assert "LOCATION_NOT_FOUND_CHOOSE_BRAND" in chat.sent_messages[0]["text"]
     assert chat.sent_messages[0]["reply_markup"].to_dict()["inline_keyboard"] == [
         [{"callback_data": "brand:0", "text": "VZ · VIVI ZUBEDI"}],
         [{"callback_data": "brand:1", "text": "MYC · Mayyech"}],
@@ -198,6 +198,7 @@ def _templates() -> dict[str, str]:
         "START": "{{progress}}\nSTART {{manual_store_button}}",
         "STORE_CONFIRMATION": "{{progress}}\nSTORE_CONFIRMATION {{store_label}} {{distance_meter}}",
         "LOCATION_NOT_FOUND": "{{progress}}\nLOCATION_NOT_FOUND",
+        "LOCATION_NOT_FOUND_CHOOSE_BRAND": "{{progress}}\nLOCATION_NOT_FOUND_CHOOSE_BRAND",
         "MANUAL_STORE_SELECTION": "{{progress}}\nMANUAL_STORE_SELECTION",
         "ASK_CHOOSE_BRAND": "{{progress}}\nASK_CHOOSE_BRAND",
         "BRAND_LIST_BUTTON": "{{short_code}} · {{label}}",

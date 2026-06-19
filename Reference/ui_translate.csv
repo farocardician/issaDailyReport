@@ -1,7 +1,8 @@
 PRIVATE_CHAT_ONLY,Laporan hanya bisa dikirim melalui chat pribadi dengan bot ya.
 START,"{{progress}}\n\nHalo 👋\n\nSaya akan bantu input laporan toko harian.\n\nTekan tombol <b>Bagikan Lokasi</b> supaya saya bisa cari toko terdekat.\nKalau tidak bisa bagikan lokasi, tekan <b>{{manual_store_button}}</b> untuk pilih toko secara manual."
 ASK_LOCATION,"{{progress}}\n\nSilakan tekan tombol <b>Bagikan Lokasi</b> supaya saya bisa bantu cari toko terdekat.\n\nKalau tidak bisa bagikan lokasi, tekan <b>{{manual_store_button}}</b> untuk pilih toko secara manual."
-LOCATION_NOT_FOUND,{{progress}}\n\nSaya belum bisa memastikan toko dari lokasi ini.\n\nSilakan pilih toko yang mau dilaporkan:
+LOCATION_NOT_FOUND,{{progress}}\n\nSaya belum bisa mencocokkan lokasi ini dengan toko dalam radius yang tersedia.\n\nSilakan pilih toko secara manual:
+LOCATION_NOT_FOUND_CHOOSE_BRAND,{{progress}}\n\nSaya belum bisa mencocokkan lokasi ini dengan toko dalam radius yang tersedia.\n\nSilakan pilih toko secara manual. Mulai dengan memilih brand:
 STORE_CONFIRMATION,{{progress}}\n\nSaya menemukan toko terdekat:\n\n<b>{{store_label}}</b>\n\nJarak kamu sekitar <b>{{distance_meter}}</b> dari toko.\n\nApakah benar ini toko yang mau dilaporkan?
 MULTIPLE_STORES_FOUND,{{progress}}\n\nKamu sepertinya berada di area:\n\n<b>{{area_label}}</b>\n\nPilih toko yang mau dilaporkan:
 MANUAL_STORE_SELECTION,{{progress}}\n\nSilakan pilih toko yang mau dilaporkan:
@@ -10,49 +11,50 @@ ACTIVATION_ASK_CONTACT,"Halo 👋\n\nUntuk mengaktifkan akun Telegram kamu, teka
 ACTIVATION_SUCCESS,"✅ Akun kamu berhasil diaktifkan. Selamat datang, {{user_name}}!"
 ACTIVATION_FAILED,Nomor HP kamu belum bisa diaktifkan. Silakan hubungi admin untuk bantuan.
 ACTIVATION_NOT_OWN_CONTACT,Tolong bagikan nomor HP kamu sendiri lewat tombol di bawah ya.
-MENU_ADMIN,"Menu Admin\n\nSilakan pilih menu:"
-MENU_SUPER_ADMIN,"Menu Super Admin\n\nSilakan pilih menu:"
+MENU_ADMIN,Menu Admin\n\nSilakan pilih menu:
+MENU_SUPER_ADMIN,Menu Super Admin\n\nSilakan pilih menu:
 MENU_PLACEHOLDER,🚧 Fitur ini akan segera tersedia.
 MENU_ACCESS_DENIED,Kamu tidak punya akses untuk tindakan ini.
-MANAGE_USERS_MENU,"{{notice}}Kelola User\n\nSilakan pilih menu:"
-MANAGE_ADMINS_MENU,"{{notice}}Kelola Admin\n\nSilakan pilih menu:"
-MANAGE_STORES_MENU,"{{notice}}Kelola Store\n\nSilakan pilih menu:"
-USER_LIST,"{{notice}}Daftar User\n\nPilih user:"
-USER_LIST_EMPTY,"{{notice}}Daftar User\n\nBelum ada user."
+MANAGE_USERS_MENU,{{notice}}Kelola User\n\nSilakan pilih menu:
+MANAGE_ADMINS_MENU,{{notice}}Kelola Admin\n\nSilakan pilih menu:
+MANAGE_STORES_MENU,{{notice}}Kelola Store\n\nSilakan pilih menu:
+USER_LIST,{{notice}}Daftar User\n\nPilih user:
+USER_LIST_EMPTY,{{notice}}Daftar User\n\nBelum ada user.
 USER_LIST_BUTTON,{{user_name}} - {{status}}
-USER_DETAIL,"{{notice}}Detail User\n\nID: {{user_id}}\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\nStatus: {{status}}\nTelegram: {{telegram_link_status}}\n\nPilih tindakan:"
-ADMIN_LIST,"{{notice}}Daftar Admin\n\nPilih admin:"
-ADMIN_LIST_EMPTY,"{{notice}}Daftar Admin\n\nBelum ada admin."
+USER_DETAIL,{{notice}}Detail User\n\nID: {{user_id}}\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\nStatus: {{status}}\nTelegram: {{telegram_link_status}}\n\nPilih tindakan:
+ADMIN_LIST,{{notice}}Daftar Admin\n\nPilih admin:
+ADMIN_LIST_EMPTY,{{notice}}Daftar Admin\n\nBelum ada admin.
 ADMIN_LIST_BUTTON,{{user_name}} - {{status}}
-ADMIN_DETAIL,"{{notice}}Detail Admin\n\nID: {{user_id}}\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\nStatus: {{status}}\nTelegram: {{telegram_link_status}}\n\nPilih tindakan:"
-STORE_LIST,"{{notice}}Daftar Store\n\nPilih store:"
-STORE_LIST_EMPTY,"{{notice}}Daftar Store\n\nBelum ada store."
+ADMIN_DETAIL,{{notice}}Detail Admin\n\nID: {{user_id}}\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\nStatus: {{status}}\nTelegram: {{telegram_link_status}}\n\nPilih tindakan:
+STORE_LIST,{{notice}}Daftar Store\n\nPilih store:
+STORE_LIST_EMPTY,{{notice}}Daftar Store\n\nBelum ada store.
 STORE_LIST_BUTTON,{{store_label}} - {{status}}
-STORE_DETAIL,"{{notice}}Detail Store\n\nID: {{store_id}}\nBrand: {{brand}}\nOutlet: {{outlet}}\nBranch: {{branch}}\nCity: {{city}}\nLatitude: {{latitude}}\nLongitude: {{longitude}}\nRadius: {{allowed_radius}} m\nCatatan: {{notes}}\nStatus: {{status}}\n\nPilih tindakan:"
+STORE_DETAIL,{{notice}}Detail Store\n\nID: {{store_id}}\nBrand: {{brand}}\nOutlet: {{outlet}}\nBranch: {{branch}}\nProvince: {{province}}\nCity: {{city}}\nLatitude: {{latitude}}\nLongitude: {{longitude}}\nRadius: {{allowed_radius}} m\nCatatan: {{notes}}\nStatus: {{status}}\n\nPilih tindakan:
 USER_TELEGRAM_LINKED_YES,Terhubung
 USER_TELEGRAM_LINKED_NO,Belum terhubung
 REPORT_ALREADY_EXISTS,{{progress}}\n\nLaporan untuk toko dan tanggal ini sudah ada.\n\nMau submit lagi sebagai koreksi?
-ASK_USER_NAME,"{{error}}Nama User\n\nKetik nama lengkap user."
-ASK_USER_PHONE,"{{error}}Nomor HP User\n\nKetik nomor HP terdaftar user."
+ASK_USER_NAME,{{error}}Nama User\n\nKetik nama lengkap user.
+ASK_USER_PHONE,{{error}}Nomor HP User\n\nKetik nomor HP terdaftar user.
 ASK_USER_EMAIL,"{{error}}Email User\n\nKetik email user, atau tekan Lewati."
 ASK_USER_NOTES,"{{error}}Catatan User\n\nKetik catatan, atau tekan Lewati."
-ASK_ADMIN_NAME,"{{error}}Nama Admin\n\nKetik nama lengkap admin."
-ASK_ADMIN_PHONE,"{{error}}Nomor HP Admin\n\nKetik nomor HP terdaftar admin."
+ASK_ADMIN_NAME,{{error}}Nama Admin\n\nKetik nama lengkap admin.
+ASK_ADMIN_PHONE,{{error}}Nomor HP Admin\n\nKetik nomor HP terdaftar admin.
 ASK_ADMIN_EMAIL,"{{error}}Email Admin\n\nKetik email admin, atau tekan Lewati."
 ASK_ADMIN_NOTES,"{{error}}Catatan Admin\n\nKetik catatan, atau tekan Lewati."
-ASK_STORE_BRAND,"{{error}}Brand Store\n\nPilih brand store."
-ASK_STORE_OUTLET,"{{error}}Outlet\n\nPilih outlet."
-ASK_STORE_BRANCH,"{{error}}Branch Store\n\nKetik nama branch store."
-ASK_STORE_CITY,"{{error}}City Store\n\nKetik kota store."
+ASK_STORE_BRAND,{{error}}Brand Store\n\nPilih brand store.
+ASK_STORE_OUTLET,{{error}}Outlet\n\nPilih outlet.
+ASK_STORE_BRANCH,{{error}}Branch Store\n\nKetik nama branch store.
+ASK_STORE_PROVINCE,{{error}}Provinsi Store\n\nPilih provinsi.
+ASK_STORE_CITY,{{error}}Kota Store\n\nPilih kota.
 ASK_STORE_LATITUDE,"{{error}}Latitude Store\n\nKetik latitude, contoh: -6.200000."
 ASK_STORE_LONGITUDE,"{{error}}Longitude Store\n\nKetik longitude, contoh: 106.816666."
 ASK_STORE_RADIUS,"{{error}}Radius Store\n\nKetik radius yang diizinkan dalam meter, contoh: 100."
 ASK_STORE_NOTES,"{{error}}Catatan Store\n\nKetik catatan, atau tekan Lewati."
 ASK_SALES_SOURCES,"{{progress}}\n\nPilih sumber penjualan hari ini.\n\n{{selected_sources}}\n\nPilih satu atau lebih sumber untuk lanjut input.\nKalau tidak ada penjualan, tekan <b>Tidak Ada Penjualan</b>."
-ASK_SALES_TRAFFIC,"{{progress}}\n{{source_progress}}\n\nBerapa jumlah traffic / pengunjung untuk <b>{{source}}</b> hari ini?\n\nKetik angka saja."
-ASK_SALES_GMV,"{{progress}}\n{{source_progress}}\n\nBerapa GMV dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
-ASK_SALES_ORDER,"{{progress}}\n{{source_progress}}\n\nBerapa total order / transaksi dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
-ASK_SALES_PIECES,"{{progress}}\n{{source_progress}}\n\nBerapa total pieces / item terjual dari <b>{{source}}</b> hari ini?\n\nKetik angka saja."
+ASK_SALES_TRAFFIC,{{progress}}\n{{source_progress}}\n\nBerapa jumlah traffic / pengunjung untuk <b>{{source}}</b> hari ini?\n\nKetik angka saja.
+ASK_SALES_GMV,{{progress}}\n{{source_progress}}\n\nBerapa GMV dari <b>{{source}}</b> hari ini?\n\nKetik angka saja.
+ASK_SALES_ORDER,{{progress}}\n{{source_progress}}\n\nBerapa total order / transaksi dari <b>{{source}}</b> hari ini?\n\nKetik angka saja.
+ASK_SALES_PIECES,{{progress}}\n{{source_progress}}\n\nBerapa total pieces / item terjual dari <b>{{source}}</b> hari ini?\n\nKetik angka saja.
 ASK_STOCK_ISSUE,"{{progress}}\n\nApakah ada kendala stok hari ini?\n\n{{selected_issues}}\n\nPilih satu atau lebih kendala untuk lanjut input.\nKalau tidak ada kendala, tekan <b>Tidak Ada</b>."
 ASK_NOTE,"{{progress}}\n\nCatatan tambahan?\n\nKetik catatan, atau tekan <b>Tidak Ada</b>."
 SALES_SUMMARY,"{{progress}}\n\nRingkasan penjualan:\n\n{{sales_breakdown}}\n\nTotal GMV: {{total_gmv}}\nTotal Order: {{total_order}}\nTotal Pieces: {{total_pieces}}\n\nLanjutkan, ubah, atau batalkan laporan?"
@@ -99,7 +101,8 @@ BUTTON_ADMIN_FIELD_NOTES,Catatan
 BUTTON_STORE_FIELD_BRAND,Brand
 BUTTON_STORE_FIELD_OUTLET,Outlet
 BUTTON_STORE_FIELD_BRANCH,Branch
-BUTTON_STORE_FIELD_CITY,City
+BUTTON_STORE_FIELD_PROVINCE,Provinsi
+BUTTON_STORE_FIELD_CITY,Kota
 BUTTON_STORE_FIELD_LATITUDE,Latitude
 BUTTON_STORE_FIELD_LONGITUDE,Longitude
 BUTTON_STORE_FIELD_RADIUS,Radius
@@ -128,47 +131,48 @@ BUTTON_NONE,Tidak Ada
 BUTTON_SKIP,Lewati
 BRAND_LIST_BUTTON,{{short_code}} · {{label}}
 OUTLET_LIST_BUTTON,{{short_code}} · {{label}}
-USER_ERROR_NAME_REQUIRED,"Nama wajib diisi.\n\n"
-USER_ERROR_PHONE_REQUIRED,"Nomor HP wajib diisi.\n\n"
-USER_ERROR_PHONE_INVALID,"Nomor HP hanya boleh berisi angka dan format nomor HP yang valid.\n\n"
-USER_ERROR_PHONE_DUPLICATE,"Nomor HP ini sudah digunakan user lain.\n\n"
-USER_ERROR_EMAIL_INVALID,"Format email belum valid.\n\n"
-STORE_ERROR_BRAND_REQUIRED,"Brand wajib diisi.\n\n"
-STORE_ERROR_OUTLET_REQUIRED,"Outlet wajib dipilih.\n\n"
-STORE_ERROR_BRANCH_REQUIRED,"Branch wajib diisi.\n\n"
-STORE_ERROR_CITY_REQUIRED,"City wajib diisi.\n\n"
+USER_ERROR_NAME_REQUIRED,Nama wajib diisi.\n\n
+USER_ERROR_PHONE_REQUIRED,Nomor HP wajib diisi.\n\n
+USER_ERROR_PHONE_INVALID,Nomor HP hanya boleh berisi angka dan format nomor HP yang valid.\n\n
+USER_ERROR_PHONE_DUPLICATE,Nomor HP ini sudah digunakan user lain.\n\n
+USER_ERROR_EMAIL_INVALID,Format email belum valid.\n\n
+STORE_ERROR_BRAND_REQUIRED,Brand wajib diisi.\n\n
+STORE_ERROR_OUTLET_REQUIRED,Outlet wajib dipilih.\n\n
+STORE_ERROR_BRANCH_REQUIRED,Branch wajib diisi.\n\n
+STORE_ERROR_PROVINCE_REQUIRED,Provinsi wajib dipilih.\n\n
+STORE_ERROR_CITY_REQUIRED,Kota wajib dipilih.\n\n
 STORE_ERROR_LATITUDE_INVALID,"Latitude belum valid. Gunakan angka antara -90 sampai 90, contoh: -6.200000.\n\n"
 STORE_ERROR_LONGITUDE_INVALID,"Longitude belum valid. Gunakan angka antara -180 sampai 180, contoh: 106.816666.\n\n"
 STORE_ERROR_RADIUS_INVALID,"Radius belum valid. Ketik angka meter lebih dari 0, contoh: 100.\n\n"
 STORE_ERROR_DUPLICATE_IDENTITY,"Store aktif dengan brand, outlet, branch, dan city yang sama sudah ada.\n\n"
-USER_FORM_REVIEW,"{{notice}}Review User\n\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\n\nSimpan data ini?"
+USER_FORM_REVIEW,{{notice}}Review User\n\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\n\nSimpan data ini?
 USER_EDIT_MENU,Pilih data user yang ingin diubah:
-USER_CONFIRM_DEACTIVATE,"Nonaktifkan user {{user_name}}?\n\nUser ini tidak bisa menggunakan bot sampai diaktifkan kembali."
+USER_CONFIRM_DEACTIVATE,Nonaktifkan user {{user_name}}?\n\nUser ini tidak bisa menggunakan bot sampai diaktifkan kembali.
 USER_CONFIRM_REACTIVATE,Aktifkan kembali user {{user_name}}?
-USER_CONFIRM_RESET_LINK,"Reset link Telegram user {{user_name}}?\n\nUser perlu aktivasi ulang dengan membagikan nomor HP."
-USER_ADDED,"User berhasil ditambahkan.\n\n"
-USER_UPDATED,"Data user berhasil diperbarui.\n\n"
-USER_DEACTIVATED,"User berhasil dinonaktifkan.\n\n"
-USER_REACTIVATED,"User berhasil diaktifkan kembali.\n\n"
-USER_LINK_RESET,"Link Telegram user berhasil direset.\n\n"
-ADMIN_FORM_REVIEW,"{{notice}}Review Admin\n\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\n\nSimpan data ini?"
+USER_CONFIRM_RESET_LINK,Reset link Telegram user {{user_name}}?\n\nUser perlu aktivasi ulang dengan membagikan nomor HP.
+USER_ADDED,User berhasil ditambahkan.\n\n
+USER_UPDATED,Data user berhasil diperbarui.\n\n
+USER_DEACTIVATED,User berhasil dinonaktifkan.\n\n
+USER_REACTIVATED,User berhasil diaktifkan kembali.\n\n
+USER_LINK_RESET,Link Telegram user berhasil direset.\n\n
+ADMIN_FORM_REVIEW,{{notice}}Review Admin\n\nNama: {{name}}\nNomor HP: {{phone}}\nEmail: {{email}}\nCatatan: {{notes}}\n\nSimpan data ini?
 ADMIN_EDIT_MENU,Pilih data admin yang ingin diubah:
-ADMIN_CONFIRM_DEACTIVATE,"Nonaktifkan admin {{user_name}}?\n\nAdmin ini tidak bisa menggunakan bot sampai diaktifkan kembali."
+ADMIN_CONFIRM_DEACTIVATE,Nonaktifkan admin {{user_name}}?\n\nAdmin ini tidak bisa menggunakan bot sampai diaktifkan kembali.
 ADMIN_CONFIRM_REACTIVATE,Aktifkan kembali admin {{user_name}}?
-ADMIN_CONFIRM_RESET_LINK,"Reset link Telegram admin {{user_name}}?\n\nAdmin perlu aktivasi ulang dengan membagikan nomor HP."
-ADMIN_ADDED,"Admin berhasil ditambahkan.\n\n"
-ADMIN_UPDATED,"Data admin berhasil diperbarui.\n\n"
-ADMIN_DEACTIVATED,"Admin berhasil dinonaktifkan.\n\n"
-ADMIN_REACTIVATED,"Admin berhasil diaktifkan kembali.\n\n"
-ADMIN_LINK_RESET,"Link Telegram admin berhasil direset.\n\n"
-STORE_FORM_REVIEW,"{{notice}}Review Store\n\nBrand: {{brand}}\nOutlet: {{outlet}}\nBranch: {{branch}}\nCity: {{city}}\nLatitude: {{latitude}}\nLongitude: {{longitude}}\nRadius: {{allowed_radius}} m\nCatatan: {{notes}}\n\nSimpan data ini?"
+ADMIN_CONFIRM_RESET_LINK,Reset link Telegram admin {{user_name}}?\n\nAdmin perlu aktivasi ulang dengan membagikan nomor HP.
+ADMIN_ADDED,Admin berhasil ditambahkan.\n\n
+ADMIN_UPDATED,Data admin berhasil diperbarui.\n\n
+ADMIN_DEACTIVATED,Admin berhasil dinonaktifkan.\n\n
+ADMIN_REACTIVATED,Admin berhasil diaktifkan kembali.\n\n
+ADMIN_LINK_RESET,Link Telegram admin berhasil direset.\n\n
+STORE_FORM_REVIEW,{{notice}}Review Store\n\nBrand: {{brand}}\nOutlet: {{outlet}}\nBranch: {{branch}}\nProvince: {{province}}\nCity: {{city}}\nLatitude: {{latitude}}\nLongitude: {{longitude}}\nRadius: {{allowed_radius}} m\nCatatan: {{notes}}\n\nSimpan data ini?
 STORE_EDIT_MENU,Pilih data store yang ingin diubah:
-STORE_CONFIRM_DEACTIVATE,"Nonaktifkan store {{store_label}}?\n\nStore ini tidak muncul di pencocokan lokasi sampai diaktifkan kembali."
+STORE_CONFIRM_DEACTIVATE,Nonaktifkan store {{store_label}}?\n\nStore ini tidak muncul di pencocokan lokasi sampai diaktifkan kembali.
 STORE_CONFIRM_REACTIVATE,Aktifkan kembali store {{store_label}}?
-STORE_ADDED,"Store berhasil ditambahkan.\n\n"
-STORE_UPDATED,"Data store berhasil diperbarui.\n\n"
-STORE_DEACTIVATED,"Store berhasil dinonaktifkan.\n\n"
-STORE_REACTIVATED,"Store berhasil diaktifkan kembali.\n\n"
+STORE_ADDED,Store berhasil ditambahkan.\n\n
+STORE_UPDATED,Data store berhasil diperbarui.\n\n
+STORE_DEACTIVATED,Store berhasil dinonaktifkan.\n\n
+STORE_REACTIVATED,Store berhasil diaktifkan kembali.\n\n
 SELECTED_PREFIX,✓
 PROGRESS_MAIN_LABEL,Langkah
 PROGRESS_MAIN_FORMAT,{{label}} {{current}}/{{total}} · {{phase}}
@@ -180,9 +184,9 @@ PROGRESS_PHASE_NOTE,Catatan
 PROGRESS_PHASE_REVIEW_SUBMIT,Review & Submit
 PAGE_INDICATOR,Hal. {{current}}/{{total}}
 SALES_SOURCE_STEP_LABEL,Sumber
-STORE_LABEL_FORMAT,"{{brand}} – {{outlet}} {{branch}}, {{city}}"
+STORE_LABEL_FORMAT,{{brand}} · {{outlet}} · {{branch}} · {{city}}
 STORE_BUTTON_LABEL_WITH_DISTANCE,{{store_label}} ({{distance_meter}})
-AREA_LABEL_FORMAT,"{{outlet}} {{branch}}, {{city}}"
+AREA_LABEL_FORMAT,{{outlet}} · {{branch}} · {{city}}
 DISTANCE_METER_FORMAT,{{distance}} m
 DISTANCE_EMPTY,-
 LOCATION_STATUS_IN_RADIUS,Dalam radius
@@ -193,7 +197,7 @@ STOCK_ISSUE_SELECTED_EMPTY,Belum ada yang dipilih.
 STOCK_ISSUE_SELECTED_HEADER,Dipilih:
 STOCK_ISSUE_DETAIL_PROMPT,"{{progress}}\n{{detail_progress}}\n\nUntuk kendala <b>{{issue}}</b>, SKU apa saja yang terdampak?\n\n{{sku_list}}\n\n{{instructions}}"
 STOCK_ISSUE_DETAIL_INPUT_INSTRUCTION,"Ketik SKU yang terdampak. Kalau ada beberapa SKU, pisahkan dengan koma."
-STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION,"Ketik <b>Tidak Ada</b> atau <b>-</b> kalau tidak ada SKU khusus."
+STOCK_ISSUE_DETAIL_SKIP_INSTRUCTION,Ketik <b>Tidak Ada</b> atau <b>-</b> kalau tidak ada SKU khusus.
 STOCK_ISSUE_SKU_EMPTY,Belum ada SKU yang diinput.
 STOCK_ISSUE_SKU_HEADER,SKU yang sudah diinput:
 STOCK_ISSUE_DETAIL_EMPTY_VALUE,-

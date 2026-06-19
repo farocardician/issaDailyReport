@@ -26,6 +26,10 @@ class StoreLocation:
     allowed_radius_meter: int | None
     status: str
     notes: str | None = None
+    province: str | None = None
+    brand_short: str | None = None
+    outlet_short: str | None = None
+    city_short: str | None = None
 
 
 @dataclass(frozen=True)

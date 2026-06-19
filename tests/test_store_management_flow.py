@@ -38,7 +38,10 @@ def test_add_store_happy_path_creates_active_store_only_after_save() -> None:
 
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
-    for text in ["Utama", "Jakarta", "-6,2", "106.8", "100", "Lewati"]:
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:0"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setcity:1"), SimpleNamespace()))
+    for text in ["-6,2", "106.8", "100", "Lewati"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
 
     assert sessions.session["current_step"] == Step.STORE_FORM_REVIEW.value
@@ -51,7 +54,8 @@ def test_add_store_happy_path_creates_active_store_only_after_save() -> None:
     assert created.brand == "VIZU"
     assert created.outlet == "Sogo"
     assert created.branch == "Utama"
-    assert created.city == "Jakarta"
+    assert created.province == "DKI Jakarta"
+    assert created.city == "Jakarta Selatan"
     assert created.latitude == -6.2
     assert created.longitude == 106.8
     assert created.allowed_radius_meter == 100
@@ -81,12 +85,132 @@ def test_store_form_outlet_picker_advances_and_uses_selected_label() -> None:
     assert "outlet" not in form["fields"]
     assert "ASK_STORE_OUTLET" in _last_message(chat)["text"]
 
+    sent_count = len(chat.sent_messages)
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:CRL"), SimpleNamespace()))
 
     form = sessions.session["draft_report"]["store_form"]
     assert form["fields"]["outlet"] == "Central"
     assert form["pos"] == 2
     assert "ASK_STORE_BRANCH" in _last_message(chat)["text"]
+    assert len(chat.sent_messages) == sent_count + 1
+    assert chat.sent_messages[-1] is _last_message(chat)
+
+
+def test_store_form_province_picker_paginates() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    regions = {f"Provinsi {index:02d}": [f"Kota {index:02d}"] for index in range(12)}
+    flow, chat, sessions, _stores = _flow(
+        _FakeStores([]),
+        _FakeUsers([actor]),
+        Step.MANAGE_STORES_MENU,
+        regions=_FakeRegions(regions),
+    )
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+
+    assert sessions.session["draft_report"]["store_form"]["pos"] == 3
+    assert _callback_data(_last_message(chat)) == [
+        "stores:setprov:0",
+        "stores:setprov:1",
+        "stores:setprov:2",
+        "stores:setprov:3",
+        "stores:setprov:4",
+        "stores:setprov:5",
+        "stores:setprov:6",
+        "stores:setprov:7",
+        "stores:setprov:8",
+        "stores:setprov:9",
+        "stores:provpage:noop",
+        "stores:provpage:1",
+        "stores:form:previous",
+        "stores:form:cancel",
+    ]
+
+
+def test_store_form_province_choice_filters_city_picker() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _stores = _flow(_FakeStores([]), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:1"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["fields"]["province"] == "Jawa Barat"
+    assert form["pos"] == 4
+    assert "ASK_STORE_CITY" in _last_message(chat)["text"]
+    assert _button_texts(_last_message(chat)) == ["Kota Bandung", "Kota Bogor", "Sebelumnya", "Batal"]
+    assert _callback_data(_last_message(chat)) == [
+        "stores:setcity:0",
+        "stores:setcity:1",
+        "stores:form:previous",
+        "stores:form:cancel",
+    ]
+
+
+def test_store_form_city_choice_advances_to_latitude() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _stores = _flow(_FakeStores([]), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:1"), SimpleNamespace()))
+    sent_count = len(chat.sent_messages)
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setcity:0"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["fields"]["city"] == "Kota Bandung"
+    assert form["pos"] == 5
+    assert "ASK_STORE_LATITUDE" in _last_message(chat)["text"]
+    assert len(chat.sent_messages) == sent_count + 1
+    assert chat.sent_messages[-1] is _last_message(chat)
+
+
+def test_store_form_previous_from_city_returns_to_province() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _stores = _flow(_FakeStores([]), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:1"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:form:previous"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["pos"] == 3
+    assert "ASK_STORE_PROVINCE" in _last_message(chat)["text"]
+
+
+def test_store_form_province_and_city_reprompt_on_typed_text() -> None:
+    actor = _user("SA-1", "Super", role="SUPER_ADMIN", telegram_user_id=7)
+    flow, chat, sessions, _stores = _flow(_FakeStores([]), _FakeUsers([actor]), Step.MANAGE_STORES_MENU)
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Jawa Barat"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["pos"] == 3
+    assert "province" not in form["fields"]
+    assert "ASK_STORE_PROVINCE" in _last_message(chat)["text"]
+
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:1"), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Kota Bandung"), SimpleNamespace()))
+
+    form = sessions.session["draft_report"]["store_form"]
+    assert form["pos"] == 4
+    assert "city" not in form["fields"]
+    assert "ASK_STORE_CITY" in _last_message(chat)["text"]
 
 
 def test_list_and_detail_render_store_data() -> None:
@@ -199,7 +323,10 @@ def test_duplicate_identity_rejected_on_add_save() -> None:
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
-    for text in ["Utama", "Jakarta", "-6.2", "106.8", "100", "Lewati"]:
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:0"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setcity:1"), SimpleNamespace()))
+    for text in ["-6.2", "106.8", "100", "Lewati"]:
         asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
     asyncio.run(flow.handle_message(_text_update(chat, "Simpan"), SimpleNamespace()))
 
@@ -271,8 +398,9 @@ def test_coordinate_and_radius_validation_errors_reprompt() -> None:
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:add"), SimpleNamespace()))
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setbrand:VZ"), SimpleNamespace()))
     asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setoutlet:SOG"), SimpleNamespace()))
-    for text in ["Utama", "Jakarta"]:
-        asyncio.run(flow.handle_message(_text_update(chat, text), SimpleNamespace()))
+    asyncio.run(flow.handle_message(_text_update(chat, "Utama"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setprov:0"), SimpleNamespace()))
+    asyncio.run(flow.handle_callback(_callback_update(chat, "stores:setcity:1"), SimpleNamespace()))
 
     asyncio.run(flow.handle_message(_text_update(chat, "91"), SimpleNamespace()))
     assert sessions.session["current_step"] == Step.STORE_FORM_INPUT.value
@@ -328,6 +456,7 @@ def _flow(
     draft: dict[str, Any] | None = None,
     user_id: str = "SA-1",
     reports: Any | None = None,
+    regions: "_FakeRegions | None" = None,
 ) -> tuple[ReportFlow, "_FakeChat", "_FakeSessions", "_FakeStores"]:
     templates = _templates()
     chat = _FakeChat()
@@ -351,6 +480,13 @@ def _flow(
                     Outlet("SOG", "Sogo", "SOG", 1, "Aktif"),
                     Outlet("CRL", "Central", "CRL", 2, "Aktif"),
                 ]
+            ),
+            regions=regions
+            or _FakeRegions(
+                {
+                    "DKI Jakarta": ["Jakarta Pusat", "Jakarta Selatan"],
+                    "Jawa Barat": ["Kota Bandung", "Kota Bogor"],
+                }
             ),
             sales_sources=SimpleNamespace(),
             stock_issues=SimpleNamespace(),
@@ -378,11 +514,11 @@ def _templates() -> dict[str, str]:
         "STORE_LIST_EMPTY": "{{notice}}STORE_LIST_EMPTY",
         "STORE_LIST_BUTTON": "{{store_label}} - {{status}}",
         "STORE_DETAIL": (
-            "{{notice}}STORE_DETAIL {{store_id}} {{brand}} {{outlet}} {{branch}} {{city}} "
+            "{{notice}}STORE_DETAIL {{store_id}} {{brand}} {{outlet}} {{branch}} {{province}} {{city}} "
             "{{latitude}} {{longitude}} {{allowed_radius}} {{notes}} {{status}}"
         ),
         "STORE_FORM_REVIEW": (
-            "{{notice}}STORE_FORM_REVIEW {{brand}} {{outlet}} {{branch}} {{city}} "
+            "{{notice}}STORE_FORM_REVIEW {{brand}} {{outlet}} {{branch}} {{province}} {{city}} "
             "{{latitude}} {{longitude}} {{allowed_radius}} {{notes}}"
         ),
         "STORE_EDIT_MENU": "STORE_EDIT_MENU",
@@ -395,6 +531,7 @@ def _templates() -> dict[str, str]:
         "STORE_ERROR_BRAND_REQUIRED": "STORE_ERROR_BRAND_REQUIRED\n",
         "STORE_ERROR_OUTLET_REQUIRED": "STORE_ERROR_OUTLET_REQUIRED\n",
         "STORE_ERROR_BRANCH_REQUIRED": "STORE_ERROR_BRANCH_REQUIRED\n",
+        "STORE_ERROR_PROVINCE_REQUIRED": "STORE_ERROR_PROVINCE_REQUIRED\n",
         "STORE_ERROR_CITY_REQUIRED": "STORE_ERROR_CITY_REQUIRED\n",
         "STORE_ERROR_LATITUDE_INVALID": "STORE_ERROR_LATITUDE_INVALID\n",
         "STORE_ERROR_LONGITUDE_INVALID": "STORE_ERROR_LONGITUDE_INVALID\n",
@@ -403,6 +540,7 @@ def _templates() -> dict[str, str]:
         "ASK_STORE_BRAND": "{{error}}ASK_STORE_BRAND",
         "ASK_STORE_OUTLET": "{{error}}ASK_STORE_OUTLET",
         "ASK_STORE_BRANCH": "{{error}}ASK_STORE_BRANCH",
+        "ASK_STORE_PROVINCE": "{{error}}ASK_STORE_PROVINCE",
         "ASK_STORE_CITY": "{{error}}ASK_STORE_CITY",
         "ASK_STORE_LATITUDE": "{{error}}ASK_STORE_LATITUDE",
         "ASK_STORE_LONGITUDE": "{{error}}ASK_STORE_LONGITUDE",
@@ -423,7 +561,8 @@ def _templates() -> dict[str, str]:
         "BUTTON_STORE_FIELD_BRAND": "Brand",
         "BUTTON_STORE_FIELD_OUTLET": "Outlet",
         "BUTTON_STORE_FIELD_BRANCH": "Branch",
-        "BUTTON_STORE_FIELD_CITY": "City",
+        "BUTTON_STORE_FIELD_PROVINCE": "Provinsi",
+        "BUTTON_STORE_FIELD_CITY": "Kota",
         "BUTTON_STORE_FIELD_LATITUDE": "Latitude",
         "BUTTON_STORE_FIELD_LONGITUDE": "Longitude",
         "BUTTON_STORE_FIELD_RADIUS": "Radius",
@@ -444,7 +583,7 @@ def _templates() -> dict[str, str]:
         "PROGRESS_MAIN_FORMAT": "{{label}} {{current}}/{{total}} · {{phase}}",
         "PROGRESS_PHASE_STORE": "Pilih Toko",
         "PAGE_INDICATOR": "Hal. {{current}}/{{total}}",
-        "STORE_LABEL_FORMAT": "{{brand}} - {{outlet}} {{branch}}, {{city}}",
+        "STORE_LABEL_FORMAT": "{{brand}} · {{outlet}} · {{branch}} · {{city}}",
         "STORE_BUTTON_LABEL_WITH_DISTANCE": "{{store_label}} ({{distance_meter}})",
         "DISTANCE_METER_FORMAT": "{{distance}} m",
         "DISTANCE_EMPTY": "-",
@@ -463,7 +602,8 @@ def _store(
         store_id=store_id,
         outlet="Sogo",
         branch=branch,
-        city="Jakarta",
+        province="DKI Jakarta",
+        city="Jakarta Selatan",
         brand="VIZU",
         latitude=latitude,
         longitude=longitude,
@@ -533,6 +673,11 @@ def _callback_data(message: dict[str, Any]) -> list[str]:
     return [button["callback_data"] for row in keyboard for button in row]
 
 
+def _button_texts(message: dict[str, Any]) -> list[str]:
+    keyboard = message["reply_markup"].to_dict()["inline_keyboard"]
+    return [button["text"] for row in keyboard for button in row]
+
+
 class _FakeTemplatesRepository:
     def __init__(self, templates: dict[str, str]) -> None:
         self._templates = templates
@@ -563,6 +708,7 @@ class _FakeStores:
         brand: str,
         outlet: str,
         branch: str,
+        province: str,
         city: str,
         latitude: float,
         longitude: float,
@@ -575,6 +721,7 @@ class _FakeStores:
             brand=brand,
             outlet=outlet,
             branch=branch,
+            province=province,
             city=city,
             latitude=latitude,
             longitude=longitude,
@@ -591,6 +738,7 @@ class _FakeStores:
         brand: str,
         outlet: str,
         branch: str,
+        province: str,
         city: str,
         latitude: float,
         longitude: float,
@@ -603,6 +751,7 @@ class _FakeStores:
             brand=brand,
             outlet=outlet,
             branch=branch,
+            province=province,
             city=city,
             latitude=latitude,
             longitude=longitude,
@@ -629,6 +778,17 @@ class _FakeOutlets:
 
     async def list_active(self, active_status: str) -> list[Outlet]:
         return [outlet for outlet in self.outlets if outlet.status == active_status]
+
+
+class _FakeRegions:
+    def __init__(self, regions: dict[str, list[str]]) -> None:
+        self.regions = regions
+
+    async def list_provinces(self, active_status: str) -> list[str]:
+        return sorted(self.regions)
+
+    async def list_cities(self, province: str, active_status: str) -> list[str]:
+        return sorted(self.regions.get(province, []))
 
 
 class _FakeUsers:

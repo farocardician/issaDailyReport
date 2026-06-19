@@ -8,6 +8,7 @@ from app.bot.keyboards import (
     management_list_keyboard,
     management_menu_keyboard,
     option_picker_keyboard,
+    paginated_option_keyboard,
     pagination_nav_row,
     retry_location_keyboard,
     sales_edit_menu_keyboard,
@@ -272,6 +273,60 @@ def test_option_picker_keyboard_supports_outlet_ids() -> None:
             {"callback_data": "stores:form:cancel", "text": "Batal"},
         ],
     ]
+
+
+def test_paginated_option_keyboard_uses_two_columns_and_nav() -> None:
+    option_ids = [str(index) for index in range(12)]
+    labels = {str(index): f"Option {index}" for index in range(12)}
+    first_page = paginated_option_keyboard(
+        option_ids,
+        labels,
+        lambda option_id: f"set:{option_id}",
+        lambda page: f"page:{page}",
+        0,
+        "Prev",
+        "Next",
+        "{{current}}/{{total}}",
+        "Sebelumnya",
+        "previous",
+        "Batal",
+        "cancel",
+    ).to_dict()
+    last_page = paginated_option_keyboard(
+        option_ids,
+        labels,
+        lambda option_id: f"set:{option_id}",
+        lambda page: f"page:{page}",
+        1,
+        "Prev",
+        "Next",
+        "{{current}}/{{total}}",
+        "Sebelumnya",
+        "previous",
+        "Batal",
+        "cancel",
+    ).to_dict()
+
+    assert first_page["inline_keyboard"] == [
+        [{"callback_data": "set:0", "text": "Option 0"}, {"callback_data": "set:1", "text": "Option 1"}],
+        [{"callback_data": "set:2", "text": "Option 2"}, {"callback_data": "set:3", "text": "Option 3"}],
+        [{"callback_data": "set:4", "text": "Option 4"}, {"callback_data": "set:5", "text": "Option 5"}],
+        [{"callback_data": "set:6", "text": "Option 6"}, {"callback_data": "set:7", "text": "Option 7"}],
+        [{"callback_data": "set:8", "text": "Option 8"}, {"callback_data": "set:9", "text": "Option 9"}],
+        [{"callback_data": "page:noop", "text": "1/2"}, {"callback_data": "page:1", "text": "Next"}],
+        [{"callback_data": "previous", "text": "Sebelumnya"}, {"callback_data": "cancel", "text": "Batal"}],
+    ]
+    assert last_page["inline_keyboard"] == [
+        [{"callback_data": "set:10", "text": "Option 10"}, {"callback_data": "set:11", "text": "Option 11"}],
+        [{"callback_data": "page:0", "text": "Prev"}, {"callback_data": "page:noop", "text": "2/2"}],
+        [{"callback_data": "previous", "text": "Sebelumnya"}, {"callback_data": "cancel", "text": "Batal"}],
+    ]
+    assert all(
+        button["text"]
+        for keyboard in (first_page, last_page)
+        for row in keyboard["inline_keyboard"]
+        for button in row
+    )
 
 
 def test_pagination_nav_row_hides_prev_on_first_and_next_on_last() -> None:

@@ -13,6 +13,7 @@ STORE_FORM_FIELDS = (
     "brand",
     "outlet",
     "branch",
+    "province",
     "city",
     "latitude",
     "longitude",
@@ -26,7 +27,7 @@ _RANDOM = random.SystemRandom()
 
 def validate_store_field(field: str, raw: object | None) -> FieldResult:
     value = "" if raw is None else str(raw).strip()
-    if field in {"brand", "outlet", "branch", "city"}:
+    if field in {"brand", "outlet", "branch", "province", "city"}:
         if not value or value == "-":
             return FieldResult(False, None, f"STORE_ERROR_{_field_error_suffix(field)}_REQUIRED")
         return FieldResult(True, normalize_text_dash(value), None)

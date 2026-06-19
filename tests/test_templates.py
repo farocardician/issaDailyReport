@@ -5,9 +5,9 @@ from app.templates import MessageTemplates
 def _templates() -> MessageTemplates:
     return MessageTemplates(
         {
-            "STORE_LABEL_FORMAT": "{{brand}} – {{outlet}} {{branch}}, {{city}}",
+            "STORE_LABEL_FORMAT": "{{brand}} · {{outlet}} · {{branch}} · {{city}}",
             "STORE_BUTTON_LABEL_WITH_DISTANCE": "{{store_label}} ({{distance_meter}})",
-            "AREA_LABEL_FORMAT": "{{outlet}} {{branch}}, {{city}}",
+            "AREA_LABEL_FORMAT": "{{outlet}} · {{branch}} · {{city}}",
             "DISTANCE_METER_FORMAT": "{{distance}} m",
             "DISTANCE_EMPTY": "-",
             "LOCATION_STATUS_IN_RADIUS": "Dalam radius",
@@ -37,16 +37,40 @@ def test_template_backed_store_and_distance_labels() -> None:
     templates = _templates()
     store = _store()
 
-    assert templates.render_store_label(store) == "VIZU – Mall & Co Utama, Jakarta"
+    assert templates.render_store_label(store) == "VIZU · Mall & Co · Utama · Jakarta"
     assert templates.render_distance_meter(1234.4) == "1.234 m"
-    assert templates.render_store_button_label(store, 1234.4) == "VIZU – Mall & Co Utama, Jakarta (1.234 m)"
+    assert templates.render_store_button_label(store, 1234.4) == "VIZU · Mall & Co · Utama · Jakarta (1.234 m)"
+
+
+def test_store_label_uses_short_codes_and_falls_back_to_full_values() -> None:
+    templates = _templates()
+    store = StoreLocation(
+        store_id="S001",
+        outlet="Mall & Co",
+        branch="Utama",
+        city="Jakarta Selatan",
+        brand="VIVI ZUBEDI",
+        latitude=-6.2,
+        longitude=106.8,
+        allowed_radius_meter=100,
+        status="Aktif",
+        notes=None,
+        brand_short="VZ",
+        outlet_short="",
+        city_short="JKT",
+    )
+
+    assert templates.render_store_label(store) == "VZ · Mall & Co · Utama · JKT"
+    assert templates.render_area_label(store) == "Mall & Co · Utama · JKT"
 
 
 def test_message_render_escapes_plain_store_label_once() -> None:
     templates = _templates()
     store_label = templates.render_store_label(_store())
 
-    assert templates.render("MESSAGE_WITH_STORE", store_label=store_label) == "<b>VIZU – Mall &amp; Co Utama, Jakarta</b>"
+    assert templates.render("MESSAGE_WITH_STORE", store_label=store_label) == (
+        "<b>VIZU · Mall &amp; Co · Utama · Jakarta</b>"
+    )
 
 
 def test_trusted_render_preserves_selected_html_token() -> None:

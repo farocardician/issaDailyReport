@@ -23,18 +23,18 @@ class MessageTemplates:
     def render_store_label(self, store: StoreLocation | Mapping[str, Any]) -> str:
         return self.render_plain(
             "STORE_LABEL_FORMAT",
-            brand=_get(store, "brand"),
-            outlet=_get(store, "outlet"),
+            brand=_short_or_full(store, "brand"),
+            outlet=_short_or_full(store, "outlet"),
             branch=_get(store, "branch"),
-            city=_get(store, "city"),
+            city=_short_or_full(store, "city"),
         )
 
     def render_area_label(self, store: StoreLocation | Mapping[str, Any]) -> str:
         return self.render_plain(
             "AREA_LABEL_FORMAT",
-            outlet=_get(store, "outlet"),
+            outlet=_short_or_full(store, "outlet"),
             branch=_get(store, "branch"),
-            city=_get(store, "city"),
+            city=_short_or_full(store, "city"),
         )
 
     def render_distance_meter(self, distance: float | None) -> str:
@@ -78,3 +78,10 @@ def _get(store: StoreLocation | Mapping[str, Any], key: str) -> Any:
     if isinstance(store, Mapping):
         return store[key]
     return getattr(store, key)
+
+
+def _short_or_full(store: StoreLocation | Mapping[str, Any], key: str) -> Any:
+    short_key = f"{key}_short"
+    if isinstance(store, Mapping):
+        return store.get(short_key) or store[key]
+    return getattr(store, short_key) or getattr(store, key)

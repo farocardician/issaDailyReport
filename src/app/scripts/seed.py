@@ -56,6 +56,7 @@ async def main() -> None:
     pool = await create_pool(settings.database_url)
     try:
         await bootstrap_schema(pool)
+        await seed_regions(pool)
         await seed_stores(pool)
         await seed_users(pool)
         await seed_outlets(pool)
@@ -74,13 +75,14 @@ async def seed_stores(pool) -> None:
             await connection.execute(
                 """
                 INSERT INTO stores (
-                    store_id, outlet, branch, city, brand, latitude, longitude,
+                    store_id, outlet, branch, province, city, brand, latitude, longitude,
                     allowed_radius_meter, status, notes
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 ON CONFLICT (store_id) DO UPDATE
                 SET outlet = EXCLUDED.outlet,
                     branch = EXCLUDED.branch,
+                    province = EXCLUDED.province,
                     city = EXCLUDED.city,
                     brand = EXCLUDED.brand,
                     latitude = EXCLUDED.latitude,
@@ -92,6 +94,7 @@ async def seed_stores(pool) -> None:
                 row["Store_ID"],
                 row["Outlet"],
                 row["Branch"],
+                row["Province"],
                 row["City"],
                 row["Brand"],
                 _float_or_none(row["Latitude"]),
@@ -101,6 +104,25 @@ async def seed_stores(pool) -> None:
                 _blank_to_none(row["Notes"]),
             )
         await connection.execute("UPDATE stores SET outlet = 'Sogo' WHERE outlet = 'SOGO'")
+
+
+async def seed_regions(pool) -> None:
+    rows = _read_csv(REFERENCE_DIR / "regions.csv")
+    async with pool.acquire() as connection:
+        for row in rows:
+            await connection.execute(
+                """
+                INSERT INTO regions (province, city, short_code, status)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (province, city) DO UPDATE
+                SET short_code = EXCLUDED.short_code,
+                    status = EXCLUDED.status
+                """,
+                row["Province"],
+                row["City"],
+                row["Short_Code"],
+                "Aktif",
+            )
 
 
 async def seed_users(pool) -> None:
