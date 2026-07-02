@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     session_ttl_minutes: int = 30
     app_tz: str = "Asia/Jakarta"
     cloudflare_tunnel_token: str = ""
+    google_sheets_export_enabled: bool = False
+    google_sheets_master_spreadsheet_id: str = ""
+    google_application_credentials: str = ""
 
     @cached_property
     def timezone(self) -> ZoneInfo:

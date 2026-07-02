@@ -2,3 +2,5 @@ python-telegram-bot[webhooks]==21.*
 asyncpg
 pydantic-settings
 pytest
+gspread==6.*
+google-auth==2.*

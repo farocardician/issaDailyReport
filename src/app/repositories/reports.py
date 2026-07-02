@@ -72,3 +72,22 @@ class ReportsRepository:
                         row["pieces_sold"],
                         row["sort_order"],
                     )
+
+    async def list_for_export(self) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT dr.report_id, dr.report_date, dr.user_id,
+                   u.name  AS staff_name, u.email AS staff_email,
+                   dr.store_id, s.brand, s.outlet, s.branch, s.city,
+                   drs.source_label AS sales_source, drs.source_type,
+                   drs.traffic, drs.gmv, drs.order_count, drs.pieces_sold,
+                   dr.stock_issue, dr.note, dr.submission_status,
+                   dr.location_status, dr.distance_from_store_meter, dr.created_at
+            FROM daily_reports dr
+            JOIN stores s ON s.store_id = dr.store_id
+            JOIN users  u ON u.user_id  = dr.user_id
+            LEFT JOIN daily_report_sales drs ON drs.report_id = dr.report_id
+            ORDER BY dr.created_at, dr.report_id, drs.sort_order
+            """
+        )
+        return [dict(row) for row in rows]

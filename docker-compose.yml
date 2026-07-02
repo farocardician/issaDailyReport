@@ -28,6 +28,21 @@ services:
     expose:
       - "8080"
 
+  sheets-sync:
+    build: .
+    profiles: ["manual"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://spg:spg@db:5432/spg}
+    volumes:
+      - ./secrets/spg-sheets-sync.json:/app/secrets/spg-sheets-sync.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python -m app.scripts.sync_sheets
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
